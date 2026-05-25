@@ -1,0 +1,55 @@
+name: Semgrep Security Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - fix/**
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep:1.151.0
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep with SARIF output
+        run: |
+          semgrep \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config=p/cwe-top-25 \
+            --config=p/xss \
+            --config=p/secrets \
+            --sarif \
+            --output=semgrep-report.sarif \
+            . || true
+
+      - name: Upload SARIF report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep-report.sarif
+          category: semgrep
+
+      - name: Run Semgrep validation (block on critical issues)
+        run: |
+          semgrep \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config=p/cwe-top-25 \
+            --config=p/xss \
+            --config=p/secrets \
+            . && echo "✓ No security issues found" || (echo "✗ Security issues detected"; exit 1)

@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-05-25T03:12:34.477255+00:00",
+  "config": {
+    "input_dir": "/private/tmp/preselect-single",
+    "output_dir": "outputs/reference-pipeline-preselecao-y4m",
+    "report_dir": "relatorios",
+    "overwrite": true,
+    "sha256": false,
+    "skip_master": true,
+    "ignore_space_check": false,
+    "limit": 0
+  },
+  "preflight": {
+    "status": "ok",
+    "reason": "espaco suficiente ou check ignorado",
+    "free_gib": 44.8597526550293,
+    "estimated_y4m_gib": 31.518140154890716
+  },
+  "summary": {
+    "found": 1,
+    "converted": 1,
+    "skipped": 0,
+    "failed": 0,
+    "blocked_preflight": 0
+  },
+  "results": [
+    {
+      "source_path": "/private/tmp/preselect-single/institucional-eventos-treinamento/374557639 - Total Pharmacy Supply (TPS) ｜ Wellgistics Wholesale Group Discount Pricing.mp4",
+      "target_group": "institucional-eventos-treinamento",
+      "video_id": "374557639",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/374557639-Total-Pharmacy-Supply-TPS-Wellgistics-Wholesale-Group-Discount-Pricing",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/374557639-Total-Pharmacy-Supply-TPS-Wellgistics-Wholesale-Group-Discount-Pricing/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/374557639-Total-Pharmacy-Supply-TPS-Wellgistics-Wholesale-Group-Discount-Pricing/conversion.log",
+      "duration_seconds": 113.450667,
+      "estimated_y4m_bytes": 33842345299
+    }
+  ]
+}

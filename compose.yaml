@@ -1,0 +1,29 @@
+services:
+  transcode-local:
+    build:
+      context: .
+      dockerfile: Dockerfile.transcode-local
+    image: streaming-transcode:local
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    entrypoint:
+      - /bin/sh
+      - -lc
+    environment:
+      FFMPEG_PRESET: ${FFMPEG_PRESET:-fast}
+      TRANSCODE_WORKDIR: /tmp/transcode
+      INPUT: ${INPUT:-/workspace/outputs/reference-pipeline-preselecao-y4m/comercial-cortes/847661749-Major-Fade-Active-Seal-Moisturizer-chicwithkels/reference.y4m}
+      OUTPUT: ${OUTPUT:-/workspace/outputs/docker-validation/847661749-av1-720p.mp4}
+      WIDTH: ${WIDTH:-1280}
+      HEIGHT: ${HEIGHT:-720}
+      BITRATE_KBPS: ${BITRATE_KBPS:-3000}
+      TRANSCODE_CODEC: ${TRANSCODE_CODEC:-av1}
+    command: >
+      transcode-local
+      --input "$$INPUT"
+      --output "$$OUTPUT"
+      --codec "$$TRANSCODE_CODEC"
+      --width "$$WIDTH"
+      --height "$$HEIGHT"
+      --bitrate-kbps "$$BITRATE_KBPS"

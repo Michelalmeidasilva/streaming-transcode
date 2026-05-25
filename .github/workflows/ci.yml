@@ -1,0 +1,96 @@
+name: streaming-transcode CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test with Coverage
+        run: go test -v -coverprofile=coverage.out -covermode=atomic ./internal/...
+
+      - name: Enforce 80 percent coverage
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print substr($3, 1, length($3)-1)}')
+          echo "Total coverage: ${total}%"
+          awk -v total="$total" 'BEGIN { exit !(total+0 >= 80) }'
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: .
+
+  security-scan:
+    name: Semgrep Security Analysis
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep:1.151.0
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep SAST
+        run: |
+          semgrep \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config=p/cwe-top-25 \
+            --config=p/xss \
+            --config=p/secrets \
+            --sarif \
+            --output=semgrep-report.sarif \
+            . || true
+
+      - name: Upload to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep-report.sarif
+          category: semgrep
+
+      - name: Validate no critical security issues
+        run: |
+          echo "Running Semgrep validation..."
+          semgrep \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config=p/cwe-top-25 \
+            --config=p/xss \
+            --config=p/secrets \
+            . && echo "✓ Security scan passed - no critical issues" || (echo "✗ Security issues found"; exit 1)

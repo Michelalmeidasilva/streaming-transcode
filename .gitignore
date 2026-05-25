@@ -1,0 +1,30 @@
+# Generated outputs and downloads
+outputs/
+output/
+downloads/
+dist/
+
+# Large local datasets and benchmark artifacts
+dataset/pre-selecao-top4-bitrate/
+dataset/**/*.mp4
+dataset/**/*.mov
+dataset/**/*.mkv
+dataset/**/*.webm
+dataset/**/*.y4m
+
+# Video and transcoding artifacts
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.y4m
+*.avi
+*.m4v
+*.ts
+
+# Local binaries and reports from ad-hoc runs
+transcode-local
+coverage.out
+
+# macOS noise
+.DS_Store

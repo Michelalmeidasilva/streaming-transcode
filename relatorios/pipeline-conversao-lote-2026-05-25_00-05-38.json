@@ -1,0 +1,112 @@
+{
+  "generated_at": "2026-05-25T03:05:38.364694+00:00",
+  "config": {
+    "input_dir": "dataset/pre-selecao-top4-bitrate",
+    "output_dir": "outputs/reference-pipeline-preselecao-y4m",
+    "report_dir": "relatorios",
+    "overwrite": false,
+    "sha256": false,
+    "skip_master": true,
+    "ignore_space_check": false,
+    "limit": 0
+  },
+  "preflight": {
+    "status": "ok",
+    "reason": "espaco suficiente ou check ignorado",
+    "free_gib": 120.75496673583984,
+    "estimated_y4m_gib": 120.5484852110967
+  },
+  "summary": {
+    "found": 6,
+    "converted": 5,
+    "skipped": 0,
+    "failed": 1,
+    "blocked_preflight": 0
+  },
+  "results": [
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/comercial-cortes/544796409 - Versed Skincare Nix-It.mp4",
+      "target_group": "comercial-cortes",
+      "video_id": "544796409",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/544796409-Versed-Skincare-Nix-It",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/544796409-Versed-Skincare-Nix-It/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/544796409-Versed-Skincare-Nix-It/conversion.log",
+      "duration_seconds": 16.81,
+      "estimated_y4m_bytes": 5019439104
+    },
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/comercial-cortes/847661749 - Major Fade Active Seal Moisturizer chicwithkels.mp4",
+      "target_group": "comercial-cortes",
+      "video_id": "847661749",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/847661749-Major-Fade-Active-Seal-Moisturizer-chicwithkels",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/847661749-Major-Fade-Active-Seal-Moisturizer-chicwithkels/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/comercial-cortes/847661749-Major-Fade-Active-Seal-Moisturizer-chicwithkels/conversion.log",
+      "duration_seconds": 7.573,
+      "estimated_y4m_bytes": 5647566641
+    },
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/comercial-estatico - poucos cortes/1008683772 - MBC2 Cosmetics.mp4",
+      "target_group": "comercial-estatico - poucos cortes",
+      "video_id": "1008683772",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/1008683772-MBC2-Cosmetics",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/1008683772-MBC2-Cosmetics/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/1008683772-MBC2-Cosmetics/conversion.log",
+      "duration_seconds": 28.053,
+      "estimated_y4m_bytes": 20941452288
+    },
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/comercial-estatico - poucos cortes/842628073 - Ceramide Moisturizer alphasherpa.mp4",
+      "target_group": "comercial-estatico - poucos cortes",
+      "video_id": "842628073",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/842628073-Ceramide-Moisturizer-alphasherpa",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/842628073-Ceramide-Moisturizer-alphasherpa/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/comercial-estatico - poucos cortes/842628073-Ceramide-Moisturizer-alphasherpa/conversion.log",
+      "duration_seconds": 16.981,
+      "estimated_y4m_bytes": 12676248576
+    },
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/institucional-eventos-treinamento/1114576994 - RealOptions Obria Medical Clinics - Nancy's Reproductive Loss Healing Story of Hope.mp4",
+      "target_group": "institucional-eventos-treinamento",
+      "video_id": "1114576994",
+      "status": "converted",
+      "reason": "ok",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/1114576994-RealOptions-Obria-Medical-Clinics-Nancy-s-Reproductive-Loss-Healing-Story-of-Hope",
+      "master_path": null,
+      "y4m_path": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/1114576994-RealOptions-Obria-Medical-Clinics-Nancy-s-Reproductive-Loss-Healing-Story-of-Hope/reference.y4m",
+      "checksum_path": null,
+      "log_path": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/1114576994-RealOptions-Obria-Medical-Clinics-Nancy-s-Reproductive-Loss-Healing-Story-of-Hope/conversion.log",
+      "duration_seconds": 172.011,
+      "estimated_y4m_bytes": 51310898483
+    },
+    {
+      "source_path": "dataset/pre-selecao-top4-bitrate/institucional-eventos-treinamento/374557639 - Total Pharmacy Supply (TPS) ｜ Wellgistics Wholesale Group Discount Pricing.mp4",
+      "target_group": "institucional-eventos-treinamento",
+      "video_id": "374557639",
+      "status": "failed",
+      "reason": "command failed with exit code 228",
+      "output_dir": "outputs/reference-pipeline-preselecao-y4m/institucional-eventos-treinamento/374557639-Total-Pharmacy-Supply-TPS-Wellgistics-Wholesale-Group-Discount-Pricing",
+      "master_path": null,
+      "y4m_path": null,
+      "checksum_path": null,
+      "log_path": null,
+      "duration_seconds": 113.450667,
+      "estimated_y4m_bytes": 33842345299
+    }
+  ]
+}

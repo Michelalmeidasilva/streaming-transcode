@@ -1,0 +1,50 @@
+version: 2
+updates:
+  # Node.js: Upload Service
+  - package-ecosystem: "npm"
+    directory: "/streaming-platform-upload"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Node.js: Web Client
+  - package-ecosystem: "npm"
+    directory: "/streaming-web-client"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Go: Ingest Service
+  - package-ecosystem: "gomod"
+    directory: "/streaming-ingest"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Go: Distribution Service
+  - package-ecosystem: "gomod"
+    directory: "/streaming-distribution"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Docker: Global (se houver Dockerfiles na raiz ou em cada serviço, pode configurar múltiplos)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
