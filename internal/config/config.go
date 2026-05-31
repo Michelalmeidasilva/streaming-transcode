@@ -37,13 +37,14 @@ type QueueConfig struct {
 }
 
 type TranscodeConfig struct {
-	WorkDir     string
-	Profile     string
-	Codecs      []string
-	FFmpegPath  string
-	FFprobePath string
-	Preset      string
-	JobTimeout  time.Duration
+	WorkDir          string
+	Profile          string
+	Codecs           []string
+	FFmpegPath       string
+	FFprobePath      string
+	Preset           string
+	JobTimeout       time.Duration
+	MaxFileSizeBytes int64
 }
 
 func FromEnv() Config {
@@ -71,13 +72,14 @@ func FromEnv() Config {
 			RetryDelaySeconds: envInt("TRANSCODE_RETRY_DELAY_SECONDS", 60),
 		},
 		Transcode: TranscodeConfig{
-			WorkDir:     env("TRANSCODE_WORKDIR", "/tmp/transcode"),
-			Profile:     env("TRANSCODE_PROFILE", "production-h264-hls-dash"),
-			Codecs:      envList("TRANSCODE_CODECS", []string{"h264"}),
-			FFmpegPath:  env("FFMPEG_PATH", "ffmpeg"),
-			FFprobePath: env("FFPROBE_PATH", "ffprobe"),
-			Preset:      env("FFMPEG_PRESET", "veryfast"),
-			JobTimeout:  time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
+			WorkDir:          env("TRANSCODE_WORKDIR", "/tmp/transcode"),
+			Profile:          env("TRANSCODE_PROFILE", "production-h264-hls-dash"),
+			Codecs:           envList("TRANSCODE_CODECS", []string{"h264"}),
+			FFmpegPath:       env("FFMPEG_PATH", "ffmpeg"),
+			FFprobePath:      env("FFPROBE_PATH", "ffprobe"),
+			Preset:           env("FFMPEG_PRESET", "veryfast"),
+			JobTimeout:       time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
+			MaxFileSizeBytes: int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 		},
 	}
 }

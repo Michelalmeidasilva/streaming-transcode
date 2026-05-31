@@ -82,3 +82,67 @@ func TestResolveRenditionsFallsBackToRequestCodecsAndPreset(t *testing.T) {
 		t.Fatalf("rendition = %+v", renditions[0])
 	}
 }
+
+func TestValidateTranscodeRequestAcceptsEmptyRequest(t *testing.T) {
+	if err := ValidateTranscodeRequest(domain.TranscodeRequest{}); err != nil {
+		t.Fatalf("ValidateTranscodeRequest() error = %v, want nil for empty request", err)
+	}
+}
+
+func TestValidateTranscodeRequestAcceptsKnownCodecs(t *testing.T) {
+	req := domain.TranscodeRequest{Codecs: []string{"h264", "av1", "vp9"}}
+	if err := ValidateTranscodeRequest(req); err != nil {
+		t.Fatalf("ValidateTranscodeRequest() error = %v", err)
+	}
+}
+
+func TestValidateTranscodeRequestRejectsUnknownCodecInList(t *testing.T) {
+	req := domain.TranscodeRequest{Codecs: []string{"h264", "xyz"}}
+	if err := ValidateTranscodeRequest(req); err == nil {
+		t.Fatalf("ValidateTranscodeRequest() error = nil, want error for unknown codec")
+	}
+}
+
+func TestValidateTranscodeRequestRejectsRenditionWithZeroDimensions(t *testing.T) {
+	req := domain.TranscodeRequest{
+		Renditions: []domain.RequestedRendition{
+			{Width: 0, Height: 720, Codec: "h264"},
+		},
+	}
+	if err := ValidateTranscodeRequest(req); err == nil {
+		t.Fatalf("ValidateTranscodeRequest() error = nil, want error for width=0")
+	}
+}
+
+func TestValidateTranscodeRequestRejectsRenditionWithNegativeDimensions(t *testing.T) {
+	req := domain.TranscodeRequest{
+		Renditions: []domain.RequestedRendition{
+			{Width: 1280, Height: -1, Codec: "h264"},
+		},
+	}
+	if err := ValidateTranscodeRequest(req); err == nil {
+		t.Fatalf("ValidateTranscodeRequest() error = nil, want error for height=-1")
+	}
+}
+
+func TestValidateTranscodeRequestRejectsRenditionWithUnknownCodec(t *testing.T) {
+	req := domain.TranscodeRequest{
+		Renditions: []domain.RequestedRendition{
+			{Width: 1280, Height: 720, Codec: "xyz"},
+		},
+	}
+	if err := ValidateTranscodeRequest(req); err == nil {
+		t.Fatalf("ValidateTranscodeRequest() error = nil, want error for unknown rendition codec")
+	}
+}
+
+func TestValidateTranscodeRequestAcceptsRenditionWithNoCodec(t *testing.T) {
+	req := domain.TranscodeRequest{
+		Renditions: []domain.RequestedRendition{
+			{Width: 1280, Height: 720},
+		},
+	}
+	if err := ValidateTranscodeRequest(req); err != nil {
+		t.Fatalf("ValidateTranscodeRequest() error = %v, want nil when codec is empty (uses default)", err)
+	}
+}

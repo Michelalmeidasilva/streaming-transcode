@@ -4,10 +4,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"streaming-transcode/internal/domain"
 )
+
+var supportedVideoExtensions = map[string]struct{}{
+	".mp4":  {},
+	".m4v":  {},
+	".mov":  {},
+	".mkv":  {},
+	".webm": {},
+	".ts":   {},
+	".y4m":  {},
+	".m3u8": {},
+}
+
+func isSupportedVideoExtension(ext string) bool {
+	_, ok := supportedVideoExtensions[ext]
+	return ok
+}
 
 func ParseUploadCompleted(body []byte, defaultBucket string) (domain.UploadCompletedEvent, error) {
 	var event domain.UploadCompletedEvent
@@ -28,6 +45,12 @@ func ParseUploadCompleted(body []byte, defaultBucket string) (domain.UploadCompl
 	if event.ObjectKey == "" {
 		return event, terminal(errors.New("objectKey or filename is required"))
 	}
+
+	ext := strings.ToLower(filepath.Ext(event.ObjectKey))
+	if !isSupportedVideoExtension(ext) {
+		return event, terminal(fmt.Errorf("unsupported file extension %q; supported: .mp4, .m4v, .mov, .mkv, .webm, .ts, .y4m, .m3u8", ext))
+	}
+
 	if event.Bucket == "" {
 		event.Bucket = defaultBucket
 	}

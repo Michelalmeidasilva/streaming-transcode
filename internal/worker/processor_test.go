@@ -291,6 +291,79 @@ func TestProcessorAlreadyTranscodedOnlyMarksReady(t *testing.T) {
 	}
 }
 
+func TestProcessorRejectsInvalidTranscodeRequest(t *testing.T) {
+	store := &fakeStorage{existsMap: map[string]bool{}}
+	runner := &fakeRunner{info: domain.MediaInfo{Width: 1920, Height: 1080, DurationSeconds: 10, VideoCodec: "h264"}}
+	var requests []capturedRequest
+	processor := newTestProcessor(t, store, runner, &requests)
+
+	event := domain.UploadCompletedEvent{
+		VideoID:   "video-bad-codec",
+		ObjectKey: "video-bad-codec/source.mp4",
+		Bucket:    "videos",
+		Transcode: domain.TranscodeRequest{
+			Renditions: []domain.RequestedRendition{
+				{Width: 0, Height: 720, Codec: "h264"},
+			},
+		},
+	}
+	err := processor.Process(context.Background(), "job-bad", event)
+	if err == nil {
+		t.Fatalf("Process() error = nil, want error for invalid rendition dimensions")
+	}
+
+	var sawFailed bool
+	for _, req := range requests {
+		if req.method == http.MethodPost && req.body["eventType"] == "transcode.failed" {
+			payload, _ := req.body["payload"].(map[string]any)
+			if payload["reason"] == "invalid_transcode_request" {
+				sawFailed = true
+			}
+		}
+	}
+	if !sawFailed {
+		t.Fatalf("expected transcode.failed with reason=invalid_transcode_request, got requests = %#v", requests)
+	}
+	if len(store.downloads) != 0 {
+		t.Fatalf("downloads = %v, want none (should fail before download)", store.downloads)
+	}
+}
+
+func TestProcessorRejectsFileTooLarge(t *testing.T) {
+	store := &fakeStorage{existsMap: map[string]bool{}}
+	runner := &fakeRunner{info: domain.MediaInfo{Width: 1920, Height: 1080, DurationSeconds: 10, VideoCodec: "h264"}}
+	var requests []capturedRequest
+	processor := newTestProcessor(t, store, runner, &requests)
+	processor.cfg.Transcode.MaxFileSizeBytes = 100 * 1024 * 1024 // 100 MB
+
+	event := domain.UploadCompletedEvent{
+		VideoID:   "video-huge",
+		ObjectKey: "video-huge/source.mp4",
+		Bucket:    "videos",
+		Size:      500 * 1024 * 1024, // 500 MB
+	}
+	err := processor.Process(context.Background(), "job-huge", event)
+	if err == nil {
+		t.Fatalf("Process() error = nil, want error for oversized file")
+	}
+
+	var sawFailed bool
+	for _, req := range requests {
+		if req.method == http.MethodPost && req.body["eventType"] == "transcode.failed" {
+			payload, _ := req.body["payload"].(map[string]any)
+			if payload["reason"] == "file_too_large" {
+				sawFailed = true
+			}
+		}
+	}
+	if !sawFailed {
+		t.Fatalf("expected transcode.failed with reason=file_too_large, got requests = %#v", requests)
+	}
+	if len(store.downloads) != 0 {
+		t.Fatalf("downloads = %v, want none (should fail before download)", store.downloads)
+	}
+}
+
 func TestProcessorHandleDeliveryAndFailure(t *testing.T) {
 	store := &fakeStorage{existsMap: map[string]bool{}}
 	runner := &fakeRunner{probeErr: errors.New("probe failed")}

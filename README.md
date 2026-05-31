@@ -51,9 +51,12 @@ Variáveis opcionais relevantes:
 TRANSCODE_QUEUE=transcode.jobs
 TRANSCODE_BINDING_KEY=video.upload.completed
 FFMPEG_PRESET=veryfast
+TRANSCODE_MAX_FILE_SIZE_MB=0
 ```
 
 `TRANSCODE_CODECS` aceita uma lista separada por virgula. Codecs suportados: `h264`, `h265`, `av1`, `vp9` e `vvc`. O alias `vpc` tambem e aceito e normalizado para `vvc`.
+
+`TRANSCODE_MAX_FILE_SIZE_MB` define o limite de tamanho do arquivo fonte em megabytes. O valor `0` (padrão) desativa a verificação. Quando configurado, jobs com `size` acima do limite são rejeitados como erro terminal antes do download, sem consumir banda ou CPU.
 
 No `streaming-platform-upload`, a migração para o namespace canônico de entrada pode ser testada com:
 
@@ -119,6 +122,7 @@ TRANSCODE_DEAD_QUEUE=transcode.dead \
 TRANSCODE_BINDING_KEY=video.upload.completed \
 TRANSCODE_MAX_ATTEMPTS=3 \
 TRANSCODE_RETRY_DELAY_SECONDS=60 \
+TRANSCODE_MAX_FILE_SIZE_MB=2048 \
 go run ./cmd/worker
 ```
 
@@ -398,30 +402,57 @@ Comportamento esperado:
 - mensagens expiradas em `transcode.retry` voltam para `video.upload.completed`
 - erros terminais e tentativas esgotadas vão para `transcode.dead`
 
-Para testar um erro terminal, publique um evento inválido sem `videoId`:
+Erros terminais — rejeitados imediatamente sem retry, sem download e sem uso de CPU:
+
+| Cenário | `reason` no payload |
+|---|---|
+| `videoId` ausente | — (parse falha antes do job) |
+| Extensão de arquivo não suportada | — (parse falha antes do job) |
+| Codec inválido em `transcode.codecs` | `invalid_transcode_request` |
+| `width` ou `height` ≤ 0 em rendition | `invalid_transcode_request` |
+| Codec desconhecido em rendition | `invalid_transcode_request` |
+| `size` acima de `TRANSCODE_MAX_FILE_SIZE_MB` | `file_too_large` |
+
+Extensões de arquivo aceitas: `.mp4`, `.m4v`, `.mov`, `.mkv`, `.webm`, `.ts`, `.y4m`, `.m3u8`.
+
+Para testar cada caso, publique via Event Gateway e observe a DLQ:
 
 ```bash
+# videoId ausente
 curl -sS -X POST http://127.0.0.1:8080/api/v1/events \
   -H 'Content-Type: application/json' \
   -d '{"eventType":"upload.completed","payload":{"filename":"invalid/sample.mp4","objectKey":"invalid/sample.mp4","bucket":"videos"}}'
+
+# extensão não suportada
+curl -sS -X POST http://127.0.0.1:8080/api/v1/events \
+  -H 'Content-Type: application/json' \
+  -d '{"eventType":"upload.completed","payload":{"videoId":"bad-ext","objectKey":"bad-ext/video.exe","bucket":"videos"}}'
+
+# codec inválido no TranscodeRequest
+curl -sS -X POST http://127.0.0.1:8080/api/v1/events \
+  -H 'Content-Type: application/json' \
+  -d '{"eventType":"upload.completed","payload":{"videoId":"bad-codec","objectKey":"bad-codec/video.mp4","bucket":"videos","transcode":{"codecs":["xyz"]}}}'
+
+# dimensões inválidas em rendition
+curl -sS -X POST http://127.0.0.1:8080/api/v1/events \
+  -H 'Content-Type: application/json' \
+  -d '{"eventType":"upload.completed","payload":{"videoId":"bad-dim","objectKey":"bad-dim/video.mp4","bucket":"videos","transcode":{"renditions":[{"width":0,"height":720,"codec":"h264"}]}}}'
 ```
 
-Verifique a DLQ:
+Verifique a DLQ após cada publicação:
 
 ```bash
 cd /Users/user/workspace-personal/video-on-demand-arch/microsservices/infra
 docker exec rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged | grep transcode.dead
 ```
 
-Resultado esperado:
+Resultado esperado — contador de `messages_ready` aumenta em 1 para cada evento inválido:
 
 ```text
 transcode.dead    1    0
 ```
 
-Se a fila já tiver mensagens anteriores, o valor de `messages_ready` deve aumentar em 1 após publicar o evento inválido.
-
-Também é possível inspecionar pela UI do RabbitMQ em `http://localhost:15672`.
+Também é possível inspecionar e ler o payload completo pela UI do RabbitMQ em `http://localhost:15672` → **Queues** → `transcode.dead` → **Get messages**.
 
 ## Como validar o fluxo pela UI de upload
 

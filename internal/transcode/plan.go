@@ -32,6 +32,23 @@ func PlanProductionRenditionsForCodecs(info domain.MediaInfo, codecs []string) [
 	return renditions
 }
 
+func ValidateTranscodeRequest(req domain.TranscodeRequest) error {
+	for _, codec := range req.Codecs {
+		if normalizeCodec(codec) == "" {
+			return fmt.Errorf("unrecognized codec %q; supported: h264, h265, av1, vp9, vvc", codec)
+		}
+	}
+	for i, r := range req.Renditions {
+		if r.Width <= 0 || r.Height <= 0 {
+			return fmt.Errorf("rendition[%d]: invalid dimensions %dx%d (must be > 0)", i, r.Width, r.Height)
+		}
+		if r.Codec != "" && normalizeCodec(r.Codec) == "" {
+			return fmt.Errorf("rendition[%d]: unrecognized codec %q; supported: h264, h265, av1, vp9, vvc", i, r.Codec)
+		}
+	}
+	return nil
+}
+
 func ResolveRenditions(info domain.MediaInfo, request domain.TranscodeRequest, defaultCodecs []string) []domain.Rendition {
 	if len(request.Renditions) > 0 {
 		resolved := make([]domain.Rendition, 0, len(request.Renditions))

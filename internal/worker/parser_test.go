@@ -73,3 +73,37 @@ func TestParseUploadCompletedRejectsMissingObjectKeyAndFilename(t *testing.T) {
 		t.Fatalf("ParseUploadCompleted() error = nil, want error")
 	}
 }
+
+func TestParseUploadCompletedAcceptsSupportedExtensions(t *testing.T) {
+	keys := []string{
+		"v1/source.mp4", "v1/source.m4v", "v1/source.mov", "v1/source.mkv",
+		"v1/source.webm", "v1/source.ts", "v1/source.y4m", "v1/source.m3u8",
+	}
+	for _, key := range keys {
+		body := []byte(`{"videoId":"v1","objectKey":"` + key + `"}`)
+		if _, err := ParseUploadCompleted(body, "videos"); err != nil {
+			t.Fatalf("ParseUploadCompleted() objectKey=%q error = %v", key, err)
+		}
+	}
+}
+
+func TestParseUploadCompletedRejectsUnsupportedExtension(t *testing.T) {
+	_, err := ParseUploadCompleted([]byte(`{"videoId":"v1","objectKey":"v1/source.exe"}`), "videos")
+	if err == nil {
+		t.Fatalf("ParseUploadCompleted() error = nil, want error for .exe")
+	}
+}
+
+func TestParseUploadCompletedRejectsNoExtension(t *testing.T) {
+	_, err := ParseUploadCompleted([]byte(`{"videoId":"v1","objectKey":"v1/source"}`), "videos")
+	if err == nil {
+		t.Fatalf("ParseUploadCompleted() error = nil, want error for missing extension")
+	}
+}
+
+func TestParseUploadCompletedExtensionIsCaseInsensitive(t *testing.T) {
+	_, err := ParseUploadCompleted([]byte(`{"videoId":"v1","objectKey":"v1/source.MP4"}`), "videos")
+	if err != nil {
+		t.Fatalf("ParseUploadCompleted() error = %v, want nil for .MP4", err)
+	}
+}

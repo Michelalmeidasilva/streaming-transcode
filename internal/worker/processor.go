@@ -91,6 +91,18 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	observabilityPath := fmt.Sprintf("metrics/%s/observability.json", event.VideoID)
 	fingerprint := processingFingerprint(event.VideoID, profile, sourceKey, event.SourceETag, event.SourceVersion)
 
+	if err := transcode.ValidateTranscodeRequest(event.Transcode); err != nil {
+		termErr := terminal(err)
+		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "invalid_transcode_request", termErr)
+		return termErr
+	}
+
+	if p.cfg.Transcode.MaxFileSizeBytes > 0 && event.Size > 0 && event.Size > p.cfg.Transcode.MaxFileSizeBytes {
+		termErr := terminal(fmt.Errorf("file size %d bytes exceeds limit %d bytes", event.Size, p.cfg.Transcode.MaxFileSizeBytes))
+		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "file_too_large", termErr)
+		return termErr
+	}
+
 	if exists, err := p.storage.Exists(ctx, event.Bucket, hlsManifest); err != nil {
 		return err
 	} else if exists {
