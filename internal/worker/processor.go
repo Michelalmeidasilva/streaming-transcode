@@ -19,6 +19,10 @@ import (
 	"streaming-transcode/internal/queue"
 	"streaming-transcode/internal/storage"
 	"streaming-transcode/internal/transcode"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type TranscodeRunner interface {
@@ -79,6 +83,16 @@ func (p *Processor) Process(ctx context.Context, jobID string, event domain.Uplo
 }
 
 func (p *Processor) process(ctx context.Context, jobID string, attempt int, event domain.UploadCompletedEvent) error {
+	tracer := otel.Tracer("streaming-transcode")
+	ctx, jobSpan := tracer.Start(ctx, "transcode.job",
+		oteltrace.WithAttributes(
+			attribute.String("video_id", event.VideoID),
+			attribute.String("job_id", jobID),
+			attribute.Int("attempt", attempt),
+		),
+	)
+	defer jobSpan.End()
+
 	started := p.clockNow()
 	hostname, _ := os.Hostname()
 	profile := strings.TrimSpace(event.Transcode.Profile)
