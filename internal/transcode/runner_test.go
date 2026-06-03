@@ -131,7 +131,7 @@ func TestWriteHLSMasterAndRunFailure(t *testing.T) {
 		{Name: "1080p", Width: 1920, Height: 1080, BitrateKbps: 6000},
 		{Name: "720p", Width: 1280, Height: 720, BitrateKbps: 3000},
 	}
-	if err := WriteHLSMaster(manifest, renditions); err != nil {
+	if err := WriteHLSMaster(manifest, renditions, true); err != nil {
 		t.Fatalf("WriteHLSMaster() error = %v", err)
 	}
 	data, err := os.ReadFile(manifest)
@@ -145,9 +145,25 @@ func TestWriteHLSMasterAndRunFailure(t *testing.T) {
 	if !strings.Contains(text, "avc1.640028") {
 		t.Fatalf("manifest missing H.264 codec string = %s", text)
 	}
+	if !strings.Contains(text, "mp4a.40.2") {
+		t.Fatalf("manifest with audio should advertise mp4a.40.2 = %s", text)
+	}
+
+	// Video-only source: the master must NOT advertise an audio codec.
+	noAudioManifest := filepath.Join(tempDir, "no-audio-master.m3u8")
+	if err := WriteHLSMaster(noAudioManifest, renditions, false); err != nil {
+		t.Fatalf("WriteHLSMaster(noAudio) error = %v", err)
+	}
+	noAudioData, err := os.ReadFile(noAudioManifest)
+	if err != nil {
+		t.Fatalf("ReadFile(noAudio) error = %v", err)
+	}
+	if strings.Contains(string(noAudioData), "mp4a") {
+		t.Fatalf("video-only master must not advertise audio codec = %s", string(noAudioData))
+	}
 
 	h265Manifest := filepath.Join(tempDir, "h265-master.m3u8")
-	if err := WriteHLSMaster(h265Manifest, []domain.Rendition{{Name: "h265-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h265"}}); err != nil {
+	if err := WriteHLSMaster(h265Manifest, []domain.Rendition{{Name: "h265-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h265"}}, true); err != nil {
 		t.Fatalf("WriteHLSMaster(h265) error = %v", err)
 	}
 	h265Data, err := os.ReadFile(h265Manifest)
@@ -163,7 +179,7 @@ func TestWriteHLSMasterAndRunFailure(t *testing.T) {
 		{Name: "av1-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"},
 		{Name: "vp9-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vp9"},
 		{Name: "vvc-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vvc"},
-	}); err != nil {
+	}, true); err != nil {
 		t.Fatalf("WriteHLSMaster(advanced) error = %v", err)
 	}
 	advancedData, err := os.ReadFile(advancedManifest)
@@ -183,5 +199,16 @@ func TestWriteHLSMasterAndRunFailure(t *testing.T) {
 	}
 	if err := run(context.Background(), failScript); err == nil || !strings.Contains(err.Error(), "failure") {
 		t.Fatalf("run() error = %v, want command output", err)
+	}
+}
+
+func TestBuildThumbnailArgs(t *testing.T) {
+	args := buildThumbnailArgs("/in/source.mp4", "/out/thumb.jpg", 2.5)
+	joined := strings.Join(args, " ")
+
+	for _, want := range []string{"-ss 2.500", "-i /in/source.mp4", "-frames:v 1", "-vf scale=640:-2", "-q:v 3", "-y /out/thumb.jpg"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("args %q missing %q", joined, want)
+		}
 	}
 }

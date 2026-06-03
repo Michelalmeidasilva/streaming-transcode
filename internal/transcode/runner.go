@@ -161,12 +161,20 @@ func (r *Runner) PackageDASH(ctx context.Context, renditionFiles []string, outDi
 	return run(ctx, r.cfg.FFmpegPath, args...)
 }
 
-func WriteHLSMaster(path string, renditions []domain.Rendition) error {
+// WriteHLSMaster writes the HLS multivariant playlist. The audio codec
+// (mp4a.40.2) is only advertised when hasAudio is true: advertising an audio
+// track that the (video-only) segments do not contain makes players initialize
+// the MSE audio SourceBuffer and then fail the append (Shaka error 3014).
+func WriteHLSMaster(path string, renditions []domain.Rendition, hasAudio bool) error {
 	var builder strings.Builder
 	builder.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n")
 	for _, rendition := range renditions {
 		bandwidth := rendition.BitrateKbps * 1000
-		builder.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"%s,mp4a.40.2\"\n", bandwidth, rendition.Width, rendition.Height, hlsCodecString(rendition.Codec)))
+		codecs := hlsCodecString(rendition.Codec)
+		if hasAudio {
+			codecs += ",mp4a.40.2"
+		}
+		builder.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"%s\"\n", bandwidth, rendition.Width, rendition.Height, codecs))
 		builder.WriteString(fmt.Sprintf("%s/index.m3u8\n", rendition.Name))
 	}
 	return os.WriteFile(path, []byte(builder.String()), 0o644)
@@ -266,4 +274,23 @@ func vvcPreset(preset string) string {
 func run(ctx context.Context, binary string, args ...string) error {
 	_, _, err := runObserved(ctx, binary, args...)
 	return err
+}
+
+func buildThumbnailArgs(source, output string, atSeconds float64) []string {
+	return []string{
+		"-ss", fmt.Sprintf("%.3f", atSeconds),
+		"-i", source,
+		"-frames:v", "1",
+		"-vf", "scale=640:-2",
+		"-q:v", "3",
+		"-y", output,
+	}
+}
+
+// ExtractThumbnail captures a single poster frame at atSeconds into output (jpg).
+func (r *Runner) ExtractThumbnail(ctx context.Context, source, output string, atSeconds float64) error {
+	if atSeconds < 1 {
+		atSeconds = 1
+	}
+	return run(ctx, r.cfg.FFmpegPath, buildThumbnailArgs(source, output, atSeconds)...)
 }
