@@ -55,6 +55,8 @@ type fakeRunner struct {
 	packageHLSErr  error
 	packageDASH    error
 	seenRenditions []domain.Rendition
+	thumbnailCalls int
+	thumbnailErr   error
 }
 
 func (r *fakeRunner) Probe(string) (domain.MediaInfo, error) {
@@ -152,6 +154,14 @@ func (r *fakeRunner) PackageDASH(_ context.Context, _ []string, outDir string) e
 		return err
 	}
 	return os.WriteFile(filepath.Join(outDir, "manifest.mpd"), []byte("<MPD/>"), 0o644)
+}
+
+func (r *fakeRunner) ExtractThumbnail(_ context.Context, _ string, output string, _ float64) error {
+	r.thumbnailCalls++
+	if r.thumbnailErr != nil {
+		return r.thumbnailErr
+	}
+	return os.WriteFile(output, []byte("jpeg-bytes"), 0o644)
 }
 
 type capturedRequest struct {
@@ -386,5 +396,60 @@ func TestProcessorHandleDeliveryAndFailure(t *testing.T) {
 	}
 	if !sawFailed {
 		t.Fatalf("requests = %#v", requests)
+	}
+}
+
+func TestProcessorGeneratesThumbnail(t *testing.T) {
+	store := &fakeStorage{existsMap: map[string]bool{}}
+	runner := &fakeRunner{info: domain.MediaInfo{
+		Width:           1920,
+		Height:          1080,
+		DurationSeconds: 60,
+		VideoCodec:      "h264",
+		AudioCodec:      "aac",
+	}}
+	var requests []capturedRequest
+	processor := newTestProcessor(t, store, runner, &requests)
+
+	event := domain.UploadCompletedEvent{
+		VideoID:   "video-thumb",
+		Filename:  "source.mp4",
+		ObjectKey: "video-thumb/source.mp4",
+		Bucket:    "videos",
+	}
+	if err := processor.Process(context.Background(), "job-thumb", event); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+
+	// 1. ExtractThumbnail must have been called exactly once.
+	if runner.thumbnailCalls != 1 {
+		t.Fatalf("thumbnailCalls = %d, want 1", runner.thumbnailCalls)
+	}
+
+	// 2. Storage must have received an UploadFile for thumbnails/<videoID>.jpg.
+	wantUploadKey := "thumbnails/video-thumb.jpg"
+	var sawThumbnailUpload bool
+	for _, upload := range store.uploads {
+		if strings.HasPrefix(upload, wantUploadKey+"=") {
+			sawThumbnailUpload = true
+			break
+		}
+	}
+	if !sawThumbnailUpload {
+		t.Fatalf("uploads missing %s; got %v", wantUploadKey, store.uploads)
+	}
+
+	// 3. A PATCH to ingest for video-thumb must set thumbnail_status = "ready".
+	var sawThumbnailPatch bool
+	for _, req := range requests {
+		if req.method == http.MethodPatch && strings.Contains(req.path, "/upload-state/videos/video-thumb") {
+			if req.body["thumbnail_status"] == "ready" {
+				sawThumbnailPatch = true
+				break
+			}
+		}
+	}
+	if !sawThumbnailPatch {
+		t.Fatalf("expected PATCH with thumbnail_status=ready for video-thumb; got requests = %#v", requests)
 	}
 }

@@ -30,6 +30,7 @@ type TranscodeRunner interface {
 	TranscodeRendition(ctx context.Context, source string, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
 	PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string) error
 	PackageDASH(ctx context.Context, renditionFiles []string, outDir string) error
+	ExtractThumbnail(ctx context.Context, source, output string, atSeconds float64) error
 }
 
 type Dependencies struct {
@@ -193,6 +194,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		return err
 	}
 	_ = p.progress(ctx, event.VideoID, jobID, attempt, fingerprint, "probed", 30)
+	p.generateThumbnail(ctx, event, sourcePath, workDir, info)
 
 	renditions := transcode.ResolveRenditions(info, event.Transcode, p.cfg.Transcode.Codecs)
 	renditionFiles := make([]string, 0, len(renditions))
@@ -235,7 +237,8 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 			return err
 		}
 	}
-	if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions); err != nil {
+	hasAudio := strings.TrimSpace(info.AudioCodec) != ""
+	if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions, hasAudio); err != nil {
 		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_master_failed", err)
 		return err
 	}
@@ -310,6 +313,26 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		return err
 	}
 	return nil
+}
+
+func (p *Processor) generateThumbnail(ctx context.Context, event domain.UploadCompletedEvent, sourcePath, workDir string, info domain.MediaInfo) {
+	at := info.DurationSeconds * 0.1
+	if info.DurationSeconds <= 0 || at < 1 {
+		at = 1
+	}
+	thumbPath := filepath.Join(workDir, "thumbnail.jpg")
+	if err := p.runner.ExtractThumbnail(ctx, sourcePath, thumbPath, at); err != nil {
+		p.logger.Printf("thumbnail extraction failed for %s: %v", event.VideoID, err)
+		return
+	}
+	key := "thumbnails/" + event.VideoID + ".jpg"
+	if err := p.storage.UploadFile(ctx, event.Bucket, key, thumbPath); err != nil {
+		p.logger.Printf("thumbnail upload failed for %s: %v", event.VideoID, err)
+		return
+	}
+	if err := p.patchVideo(ctx, event.VideoID, map[string]any{"thumbnail_status": "ready"}); err != nil {
+		p.logger.Printf("thumbnail status patch failed for %s: %v", event.VideoID, err)
+	}
 }
 
 func (p *Processor) uploadDir(ctx context.Context, bucket, dir, prefix string) error {
