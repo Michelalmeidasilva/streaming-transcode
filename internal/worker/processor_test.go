@@ -57,13 +57,16 @@ type fakeRunner struct {
 	seenRenditions []domain.Rendition
 	thumbnailCalls int
 	thumbnailErr   error
+
+	subtitleConversions int
+	subtitleErr         error
 }
 
 func (r *fakeRunner) Probe(string) (domain.MediaInfo, error) {
 	return r.info, r.probeErr
 }
 
-func (r *fakeRunner) TranscodeRendition(_ context.Context, _ string, rendition domain.Rendition, output string) (domain.RenditionMetrics, error) {
+func (r *fakeRunner) TranscodeRendition(_ context.Context, _ string, _ *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error) {
 	r.seenRenditions = append(r.seenRenditions, rendition)
 	if r.transcodeErr != nil {
 		return domain.RenditionMetrics{}, r.transcodeErr
@@ -156,12 +159,23 @@ func (r *fakeRunner) PackageDASH(_ context.Context, _ []string, outDir string) e
 	return os.WriteFile(filepath.Join(outDir, "manifest.mpd"), []byte("<MPD/>"), 0o644)
 }
 
-func (r *fakeRunner) ExtractThumbnail(_ context.Context, _ string, output string, _ float64) error {
+func (r *fakeRunner) ExtractThumbnail(_ context.Context, _ string, _ *domain.RawVideoParams, output string, _ float64) error {
 	r.thumbnailCalls++
 	if r.thumbnailErr != nil {
 		return r.thumbnailErr
 	}
 	return os.WriteFile(output, []byte("jpeg-bytes"), 0o644)
+}
+
+func (r *fakeRunner) ConvertSRTToVTT(_ context.Context, _ string, outVTT string) error {
+	r.subtitleConversions++
+	if r.subtitleErr != nil {
+		return r.subtitleErr
+	}
+	if err := os.MkdirAll(filepath.Dir(outVTT), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(outVTT, []byte("WEBVTT\n"), 0o644)
 }
 
 type capturedRequest struct {

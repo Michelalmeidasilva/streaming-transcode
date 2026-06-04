@@ -50,7 +50,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 	runner := NewFFmpegRunner(config.TranscodeConfig{FFmpegPath: script, FFprobePath: ffprobeScript, Preset: "fast"})
 	rendition := domain.Rendition{Name: "720p", Width: 1280, Height: 720, BitrateKbps: 3000}
 	output := filepath.Join(tempDir, "out", "720p.mp4")
-	metrics, err := runner.TranscodeRendition(context.Background(), "source.mp4", rendition, output)
+	metrics, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil, rendition, output)
 	if err != nil {
 		t.Fatalf("TranscodeRendition() error = %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 		t.Fatalf("Transcode args missing preset: %s", text)
 	}
 
-	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", domain.Rendition{Name: "h265-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h265"}, output); err != nil {
+	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil, domain.Rendition{Name: "h265-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h265"}, output); err != nil {
 		t.Fatalf("TranscodeRendition(h265) error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
@@ -77,7 +77,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 		t.Fatalf("H.265 transcode args = %s", string(args))
 	}
 
-	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", domain.Rendition{Name: "av1-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"}, output); err != nil {
+	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil, domain.Rendition{Name: "av1-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"}, output); err != nil {
 		t.Fatalf("TranscodeRendition(av1) error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
@@ -85,7 +85,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 		t.Fatalf("AV1 transcode args = %s", string(args))
 	}
 
-	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", domain.Rendition{Name: "vp9-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vp9"}, output); err != nil {
+	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil, domain.Rendition{Name: "vp9-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vp9"}, output); err != nil {
 		t.Fatalf("TranscodeRendition(vp9) error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
@@ -93,7 +93,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 		t.Fatalf("VP9 transcode args = %s", string(args))
 	}
 
-	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", domain.Rendition{Name: "vvc-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vvc"}, output); err != nil {
+	if _, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil, domain.Rendition{Name: "vvc-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "vvc"}, output); err != nil {
 		t.Fatalf("TranscodeRendition(vvc) error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
@@ -202,8 +202,25 @@ func TestWriteHLSMasterAndRunFailure(t *testing.T) {
 	}
 }
 
+func TestRawInputArgs(t *testing.T) {
+	if got := strings.Join(rawInputArgs("/in/source.mp4", nil), " "); got != "-i /in/source.mp4" {
+		t.Fatalf("rawInputArgs(nil) = %q", got)
+	}
+	raw := &domain.RawVideoParams{Width: 1920, Height: 1080, FPS: 29.97, PixelFormat: "yuv420p"}
+	joined := strings.Join(rawInputArgs("/in/source.yuv", raw), " ")
+	for _, want := range []string{"-f rawvideo", "-pix_fmt yuv420p", "-s 1920x1080", "-framerate 29.97", "-i /in/source.yuv"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("rawInputArgs(raw) = %q, missing %q", joined, want)
+		}
+	}
+	// Pixel format falls back to the default when blank.
+	if got := strings.Join(rawInputArgs("/in/x.yuv", &domain.RawVideoParams{Width: 2, Height: 2, FPS: 1}), " "); !strings.Contains(got, "-pix_fmt yuv420p") {
+		t.Fatalf("rawInputArgs default pixfmt = %q", got)
+	}
+}
+
 func TestBuildThumbnailArgs(t *testing.T) {
-	args := buildThumbnailArgs("/in/source.mp4", "/out/thumb.jpg", 2.5)
+	args := buildThumbnailArgs("/in/source.mp4", nil, "/out/thumb.jpg", 2.5)
 	joined := strings.Join(args, " ")
 
 	for _, want := range []string{"-ss 2.500", "-i /in/source.mp4", "-frames:v 1", "-vf scale=640:-2", "-q:v 3", "-y /out/thumb.jpg"} {

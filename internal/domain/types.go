@@ -17,7 +17,48 @@ type UploadCompletedEvent struct {
 	URL           string           `json:"url,omitempty"`
 	OccurredAt    string           `json:"occurredAt,omitempty"`
 	Transcode     TranscodeRequest `json:"transcode,omitempty"`
+	// RawVideo carries the geometry/format of headerless raw sources (.yuv).
+	// Containers and self-describing formats (.mp4/.mkv/.y4m/...) leave it nil
+	// and rely on ffprobe instead.
+	RawVideo *RawVideoParams `json:"rawVideo,omitempty"`
+	// Subtitles are sidecar .srt tracks uploaded with the video. The transcoder
+	// converts each to WebVTT and advertises it in the HLS/DASH manifests.
+	Subtitles []SubtitleInput `json:"subtitles,omitempty"`
 }
+
+// SubtitleInput is a sidecar subtitle uploaded alongside the video. ObjectKey
+// points at the source .srt in storage; Language is a BCP-47/ISO code (e.g.
+// "pt", "en") and Label is the human-readable track name shown in the player.
+type SubtitleInput struct {
+	ObjectKey string `json:"objectKey"`
+	Language  string `json:"language,omitempty"`
+	Label     string `json:"label,omitempty"`
+}
+
+// SubtitleTrack is a packaged WebVTT track referenced from the manifests and the
+// playback metadata. ManifestPath is the per-language HLS media playlist.
+type SubtitleTrack struct {
+	Language     string `json:"language"`
+	Label        string `json:"label"`
+	VTTPath      string `json:"vttPath"`
+	ManifestPath string `json:"manifestPath,omitempty"`
+	Default      bool   `json:"default,omitempty"`
+}
+
+// RawVideoParams describes a headerless raw video stream (e.g. .yuv). ffprobe
+// cannot infer these from the file, so they must be supplied at upload time and
+// fed to ffmpeg as demuxer options (-f rawvideo -pix_fmt -s WxH -framerate)
+// before the -i flag.
+type RawVideoParams struct {
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	FPS         float64 `json:"fps"`
+	PixelFormat string  `json:"pixelFormat,omitempty"`
+}
+
+// DefaultRawPixelFormat is used when an uploaded raw stream omits the pixel
+// format. yuv420p is the planar 8-bit layout produced by the bitrate ladder.
+const DefaultRawPixelFormat = "yuv420p"
 
 type RequestedRendition struct {
 	Name        string `json:"name,omitempty"`
@@ -113,6 +154,7 @@ type TranscodeResult struct {
 	Attempt           int              `json:"attempt"`
 	MediaInfo         MediaInfo        `json:"mediaInfo"`
 	Renditions        []Rendition      `json:"renditions"`
+	Subtitles         []SubtitleTrack  `json:"subtitles,omitempty"`
 	HLSManifestPath   string           `json:"hlsManifestPath"`
 	DASHManifestPath  string           `json:"dashManifestPath"`
 	MetricsPath       string           `json:"metricsPath"`

@@ -18,7 +18,19 @@ var supportedVideoExtensions = map[string]struct{}{
 	".webm": {},
 	".ts":   {},
 	".y4m":  {},
+	".yuv":  {},
 	".m3u8": {},
+}
+
+// rawVideoExtensions are headerless streams ffprobe cannot inspect; they require
+// RawVideo geometry to be supplied on the event.
+var rawVideoExtensions = map[string]struct{}{
+	".yuv": {},
+}
+
+func isRawVideoExtension(ext string) bool {
+	_, ok := rawVideoExtensions[ext]
+	return ok
 }
 
 func isSupportedVideoExtension(ext string) bool {
@@ -48,7 +60,22 @@ func ParseUploadCompleted(body []byte, defaultBucket string) (domain.UploadCompl
 
 	ext := strings.ToLower(filepath.Ext(event.ObjectKey))
 	if !isSupportedVideoExtension(ext) {
-		return event, terminal(fmt.Errorf("unsupported file extension %q; supported: .mp4, .m4v, .mov, .mkv, .webm, .ts, .y4m, .m3u8", ext))
+		return event, terminal(fmt.Errorf("unsupported file extension %q; supported: .mp4, .m4v, .mov, .mkv, .webm, .ts, .y4m, .yuv, .m3u8", ext))
+	}
+
+	if isRawVideoExtension(ext) {
+		if event.RawVideo == nil {
+			return event, terminal(fmt.Errorf("raw source %q requires rawVideo metadata (width, height, fps)", ext))
+		}
+		if event.RawVideo.Width <= 0 || event.RawVideo.Height <= 0 {
+			return event, terminal(fmt.Errorf("raw source %q requires positive rawVideo width and height", ext))
+		}
+		if event.RawVideo.FPS <= 0 {
+			return event, terminal(fmt.Errorf("raw source %q requires positive rawVideo fps", ext))
+		}
+		if strings.TrimSpace(event.RawVideo.PixelFormat) == "" {
+			event.RawVideo.PixelFormat = domain.DefaultRawPixelFormat
+		}
 	}
 
 	if event.Bucket == "" {

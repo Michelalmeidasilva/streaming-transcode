@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,57 @@ func (r *Runner) Probe(source string) (domain.MediaInfo, error) {
 	return Probe(r.cfg.FFprobePath, source)
 }
 
-func (r *Runner) TranscodeRendition(ctx context.Context, source string, rendition domain.Rendition, output string) (domain.RenditionMetrics, error) {
+// probeSource returns media info for the source. For headerless raw streams
+// ffprobe cannot read geometry, so the info is synthesized from the
+// upload-supplied RawVideoParams instead.
+func (r *Runner) probeSource(source string, raw *domain.RawVideoParams) (domain.MediaInfo, error) {
+	if raw == nil {
+		return r.Probe(source)
+	}
+	return rawMediaInfo(source, raw), nil
+}
+
+// rawMediaInfo builds MediaInfo for a raw stream. Duration/bitrate are unknown
+// (no container), so they stay zero; size falls back to the file on disk.
+func rawMediaInfo(source string, raw *domain.RawVideoParams) domain.MediaInfo {
+	return domain.MediaInfo{
+		Width:      raw.Width,
+		Height:     raw.Height,
+		FPS:        raw.FPS,
+		VideoCodec: "rawvideo",
+		SizeBytes:  fileSizeBytes(source),
+	}
+}
+
+// rawInputArgs returns the ffmpeg flags that select the input. Headerless raw
+// streams (.yuv) carry no geometry, so they must be demuxed as rawvideo with an
+// explicit pixel format, frame size and rate before -i; everything else lets
+// ffmpeg probe the container.
+func rawInputArgs(source string, raw *domain.RawVideoParams) []string {
+	if raw == nil {
+		return []string{"-i", source}
+	}
+	pixfmt := strings.TrimSpace(raw.PixelFormat)
+	if pixfmt == "" {
+		pixfmt = domain.DefaultRawPixelFormat
+	}
+	return []string{
+		"-f", "rawvideo",
+		"-pix_fmt", pixfmt,
+		"-s", fmt.Sprintf("%dx%d", raw.Width, raw.Height),
+		"-framerate", strconv.FormatFloat(raw.FPS, 'f', -1, 64),
+		"-i", source,
+	}
+}
+
+func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error) {
 	startedAt := time.Now().UTC()
 	preset := strings.TrimSpace(rendition.Preset)
 	if preset == "" {
 		preset = r.cfg.Preset
 	}
 	codec := encodingCodecSettings(rendition.Codec, preset)
-	sourceInfo, err := r.Probe(source)
+	sourceInfo, err := r.probeSource(source, raw)
 	if err != nil {
 		return domain.RenditionMetrics{}, err
 	}
@@ -40,12 +84,12 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, renditio
 		sourceSize = fileSizeBytes(source)
 	}
 
-	args := []string{
-		"-y",
-		"-i", source,
+	args := []string{"-y"}
+	args = append(args, rawInputArgs(source, raw)...)
+	args = append(args,
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", rendition.Width, rendition.Height, rendition.Width, rendition.Height),
 		"-c:v", codec.encoder,
-	}
+	)
 	if normalizeCodec(rendition.Codec) == "av1" {
 		args = append(args, "-b:v", "0", "-crf", av1CRF(rendition))
 	} else {
@@ -165,16 +209,23 @@ func (r *Runner) PackageDASH(ctx context.Context, renditionFiles []string, outDi
 // (mp4a.40.2) is only advertised when hasAudio is true: advertising an audio
 // track that the (video-only) segments do not contain makes players initialize
 // the MSE audio SourceBuffer and then fail the append (Shaka error 3014).
-func WriteHLSMaster(path string, renditions []domain.Rendition, hasAudio bool) error {
+func WriteHLSMaster(path string, renditions []domain.Rendition, hasAudio bool, subtitles ...domain.SubtitleTrack) error {
 	var builder strings.Builder
 	builder.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n")
+	// Subtitle renditions are declared up front; each variant then references the
+	// group via the SUBTITLES attribute.
+	builder.WriteString(hlsSubtitleMediaLines(subtitles))
+	subtitlesAttr := ""
+	if len(subtitles) > 0 {
+		subtitlesAttr = fmt.Sprintf(",SUBTITLES=\"%s\"", hlsSubtitleGroupID)
+	}
 	for _, rendition := range renditions {
 		bandwidth := rendition.BitrateKbps * 1000
 		codecs := hlsCodecString(rendition.Codec)
 		if hasAudio {
 			codecs += ",mp4a.40.2"
 		}
-		builder.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"%s\"\n", bandwidth, rendition.Width, rendition.Height, codecs))
+		builder.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"%s\"%s\n", bandwidth, rendition.Width, rendition.Height, codecs, subtitlesAttr))
 		builder.WriteString(fmt.Sprintf("%s/index.m3u8\n", rendition.Name))
 	}
 	return os.WriteFile(path, []byte(builder.String()), 0o644)
@@ -276,21 +327,21 @@ func run(ctx context.Context, binary string, args ...string) error {
 	return err
 }
 
-func buildThumbnailArgs(source, output string, atSeconds float64) []string {
-	return []string{
-		"-ss", fmt.Sprintf("%.3f", atSeconds),
-		"-i", source,
+func buildThumbnailArgs(source string, raw *domain.RawVideoParams, output string, atSeconds float64) []string {
+	args := []string{"-ss", fmt.Sprintf("%.3f", atSeconds)}
+	args = append(args, rawInputArgs(source, raw)...)
+	return append(args,
 		"-frames:v", "1",
 		"-vf", "scale=640:-2",
 		"-q:v", "3",
 		"-y", output,
-	}
+	)
 }
 
 // ExtractThumbnail captures a single poster frame at atSeconds into output (jpg).
-func (r *Runner) ExtractThumbnail(ctx context.Context, source, output string, atSeconds float64) error {
+func (r *Runner) ExtractThumbnail(ctx context.Context, source string, raw *domain.RawVideoParams, output string, atSeconds float64) error {
 	if atSeconds < 1 {
 		atSeconds = 1
 	}
-	return run(ctx, r.cfg.FFmpegPath, buildThumbnailArgs(source, output, atSeconds)...)
+	return run(ctx, r.cfg.FFmpegPath, buildThumbnailArgs(source, raw, output, atSeconds)...)
 }

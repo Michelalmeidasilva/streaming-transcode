@@ -87,6 +87,37 @@ func TestParseUploadCompletedAcceptsSupportedExtensions(t *testing.T) {
 	}
 }
 
+func TestParseUploadCompletedAcceptsRawYUVWithMetadata(t *testing.T) {
+	event, err := ParseUploadCompleted([]byte(`{
+		"videoId":"v1",
+		"objectKey":"raw/v1/source.yuv",
+		"rawVideo":{"width":1920,"height":1080,"fps":30}
+	}`), "videos")
+	if err != nil {
+		t.Fatalf("ParseUploadCompleted() error = %v", err)
+	}
+	if event.RawVideo == nil || event.RawVideo.Width != 1920 || event.RawVideo.Height != 1080 {
+		t.Fatalf("rawVideo = %+v", event.RawVideo)
+	}
+	// Pixel format defaults when omitted.
+	if event.RawVideo.PixelFormat != "yuv420p" {
+		t.Fatalf("default pixel format = %q", event.RawVideo.PixelFormat)
+	}
+}
+
+func TestParseUploadCompletedRejectsRawYUVWithoutMetadata(t *testing.T) {
+	cases := []string{
+		`{"videoId":"v1","objectKey":"raw/v1/source.yuv"}`,
+		`{"videoId":"v1","objectKey":"raw/v1/source.yuv","rawVideo":{"height":1080,"fps":30}}`,
+		`{"videoId":"v1","objectKey":"raw/v1/source.yuv","rawVideo":{"width":1920,"height":1080}}`,
+	}
+	for _, body := range cases {
+		if _, err := ParseUploadCompleted([]byte(body), "videos"); err == nil {
+			t.Fatalf("ParseUploadCompleted(%s) error = nil, want error", body)
+		}
+	}
+}
+
 func TestParseUploadCompletedRejectsUnsupportedExtension(t *testing.T) {
 	_, err := ParseUploadCompleted([]byte(`{"videoId":"v1","objectKey":"v1/source.exe"}`), "videos")
 	if err == nil {

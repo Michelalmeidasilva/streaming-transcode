@@ -27,10 +27,11 @@ import (
 
 type TranscodeRunner interface {
 	Probe(source string) (domain.MediaInfo, error)
-	TranscodeRendition(ctx context.Context, source string, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
+	TranscodeRendition(ctx context.Context, source string, raw *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
 	PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string) error
 	PackageDASH(ctx context.Context, renditionFiles []string, outDir string) error
-	ExtractThumbnail(ctx context.Context, source, output string, atSeconds float64) error
+	ExtractThumbnail(ctx context.Context, source string, raw *domain.RawVideoParams, output string, atSeconds float64) error
+	ConvertSRTToVTT(ctx context.Context, srcSRT, outVTT string) error
 }
 
 type Dependencies struct {
@@ -188,7 +189,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	sourceSizeBytes := fileSizeBytes(sourcePath)
 	_ = p.progress(ctx, event.VideoID, jobID, attempt, fingerprint, "downloaded", 20)
 
-	info, err := p.runner.Probe(sourcePath)
+	info, err := p.probeSource(sourcePath, event.RawVideo)
 	if err != nil {
 		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "ffprobe_failed", err)
 		return err
@@ -201,7 +202,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	renditionMetrics := make([]domain.RenditionMetrics, 0, len(renditions))
 	for i, rendition := range renditions {
 		outFile := filepath.Join(outputDir, rendition.Name+".mp4")
-		metrics, err := p.runner.TranscodeRendition(ctx, sourcePath, rendition, outFile)
+		metrics, err := p.runner.TranscodeRendition(ctx, sourcePath, event.RawVideo, rendition, outFile)
 		if err != nil {
 			_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "ffmpeg_failed", err)
 			return err
@@ -237,8 +238,14 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 			return err
 		}
 	}
+	subtitleTracks, err := p.processSubtitles(ctx, event, workDir, hlsDir, info.DurationSeconds)
+	if err != nil {
+		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "subtitle_failed", err)
+		return err
+	}
+
 	hasAudio := strings.TrimSpace(info.AudioCodec) != ""
-	if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions, hasAudio); err != nil {
+	if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions, hasAudio, subtitleTracks...); err != nil {
 		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_master_failed", err)
 		return err
 	}
@@ -289,6 +296,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		Attempt:           attempt,
 		MediaInfo:         info,
 		Renditions:        renditions,
+		Subtitles:         subtitleTracks,
 		HLSManifestPath:   hlsManifest,
 		DASHManifestPath:  fmt.Sprintf("transcoded/%s/dash/manifest.mpd", event.VideoID),
 		MetricsPath:       metricsPath,
@@ -315,13 +323,82 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	return nil
 }
 
+// probeSource returns media info for the downloaded source. Headerless raw
+// streams (.yuv) carry no geometry ffprobe can read, so for them the info is
+// synthesized from the upload-supplied RawVideo metadata instead.
+func (p *Processor) probeSource(sourcePath string, raw *domain.RawVideoParams) (domain.MediaInfo, error) {
+	if raw == nil {
+		return p.runner.Probe(sourcePath)
+	}
+	return domain.MediaInfo{
+		Width:      raw.Width,
+		Height:     raw.Height,
+		FPS:        raw.FPS,
+		VideoCodec: "rawvideo",
+		SizeBytes:  fileSizeBytes(sourcePath),
+	}, nil
+}
+
+// processSubtitles downloads each sidecar .srt, converts it to WebVTT and writes
+// the per-language HLS media playlist into hlsDir/subtitles/<lang>/. The files
+// are uploaded with the rest of the HLS output; the returned tracks are fed to
+// the HLS master and the playback metadata. A subtitle failure is terminal: a
+// requested track that cannot be produced should surface, not be dropped.
+func (p *Processor) processSubtitles(ctx context.Context, event domain.UploadCompletedEvent, workDir, hlsDir string, durationSeconds float64) ([]domain.SubtitleTrack, error) {
+	if len(event.Subtitles) == 0 {
+		return nil, nil
+	}
+	tracks := make([]domain.SubtitleTrack, 0, len(event.Subtitles))
+	seen := map[string]bool{}
+	for i, sub := range event.Subtitles {
+		key := strings.TrimSpace(sub.ObjectKey)
+		if key == "" {
+			continue
+		}
+		lang := transcode.SanitizeLanguage(sub.Language)
+		// Disambiguate duplicate language codes so playlists do not collide.
+		if seen[lang] {
+			lang = fmt.Sprintf("%s-%d", lang, i+1)
+		}
+		seen[lang] = true
+
+		srtPath := filepath.Join(workDir, "subs", lang+".srt")
+		if err := os.MkdirAll(filepath.Dir(srtPath), 0o755); err != nil {
+			return nil, err
+		}
+		if err := p.storage.Download(ctx, event.Bucket, key, srtPath); err != nil {
+			return nil, fmt.Errorf("download subtitle %q: %w", key, err)
+		}
+
+		langDir := filepath.Join(hlsDir, "subtitles", lang)
+		vttName := lang + ".vtt"
+		vttPath := filepath.Join(langDir, vttName)
+		if err := p.runner.ConvertSRTToVTT(ctx, srtPath, vttPath); err != nil {
+			return nil, fmt.Errorf("convert subtitle %q: %w", key, err)
+		}
+		playlist := transcode.BuildSubtitleMediaPlaylist(vttName, durationSeconds)
+		if err := os.WriteFile(filepath.Join(langDir, "index.m3u8"), []byte(playlist), 0o644); err != nil {
+			return nil, err
+		}
+
+		tracks = append(tracks, domain.SubtitleTrack{
+			Language:     lang,
+			Label:        sub.Label,
+			VTTPath:      fmt.Sprintf("transcoded/%s/hls/subtitles/%s/%s", event.VideoID, lang, vttName),
+			ManifestPath: fmt.Sprintf("subtitles/%s/index.m3u8", lang),
+			Default:      i == 0,
+		})
+	}
+	return tracks, nil
+}
+
 func (p *Processor) generateThumbnail(ctx context.Context, event domain.UploadCompletedEvent, sourcePath, workDir string, info domain.MediaInfo) {
 	at := info.DurationSeconds * 0.1
 	if info.DurationSeconds <= 0 || at < 1 {
 		at = 1
 	}
 	thumbPath := filepath.Join(workDir, "thumbnail.jpg")
-	if err := p.runner.ExtractThumbnail(ctx, sourcePath, thumbPath, at); err != nil {
+	if err := p.runner.ExtractThumbnail(ctx, sourcePath, event.RawVideo, thumbPath, at); err != nil {
 		p.logger.Printf("thumbnail extraction failed for %s: %v", event.VideoID, err)
 		return
 	}
@@ -406,6 +483,7 @@ func (p *Processor) complete(ctx context.Context, result domain.TranscodeResult)
 			"hlsManifestPath":  result.HLSManifestPath,
 			"dashManifestPath": result.DASHManifestPath,
 			"renditions":       result.Renditions,
+			"subtitles":        result.Subtitles,
 		},
 		"metrics": map[string]any{
 			"rtf":                  result.RTF,
