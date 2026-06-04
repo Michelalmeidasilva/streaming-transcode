@@ -35,7 +35,7 @@ STORAGE_BUCKET=videos
 MINIO_ENDPOINT=http://minio:9000
 MINIO_ACCESS_KEY=admin
 MINIO_SECRET_KEY=password123
-EVENT_GATEWAY_URL=http://event-gateway:8080/api/v1
+EVENT_GATEWAY_URL=http://streaming-ingest:8080/api/v1
 TRANSCODE_WORKDIR=/tmp/transcode
 TRANSCODE_PROFILE=production-h264-hls-dash
 TRANSCODE_CODECS=h264
@@ -348,7 +348,7 @@ curl -sS -X POST http://127.0.0.1:8080/api/v1/events \
 
 ```bash
 cd /Users/user/workspace-personal/video-on-demand-arch/microsservices/infra
-docker compose logs -f streaming-transcode event-gateway
+docker compose logs -f streaming-transcode streaming-ingest
 ```
 
 6. Verifique os outputs no MinIO:

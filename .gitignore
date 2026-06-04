@@ -4,6 +4,8 @@ output/
 downloads/
 dist/
 
+.env
+
 # Large local datasets and benchmark artifacts
 dataset/pre-selecao-top4-bitrate/
 dataset/**/*.mp4
