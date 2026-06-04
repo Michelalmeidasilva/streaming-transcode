@@ -28,3 +28,6 @@ coverage.out
 
 # macOS noise
 .DS_Store
+
+# air (hot reload em make development-infra)
+tmp/
