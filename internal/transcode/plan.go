@@ -103,6 +103,31 @@ func ResolveRenditions(info domain.MediaInfo, request domain.TranscodeRequest, d
 	return renditions
 }
 
+// CapRenditionsByHeight drops every rendition taller than maxHeight. maxHeight
+// <= 0 means no cap. If the cap is below the entire ladder it keeps the single
+// shortest rendition so the job never ends up with an empty ladder.
+func CapRenditionsByHeight(renditions []domain.Rendition, maxHeight int) []domain.Rendition {
+	if maxHeight <= 0 {
+		return renditions
+	}
+	filtered := make([]domain.Rendition, 0, len(renditions))
+	for _, r := range renditions {
+		if r.Height <= maxHeight {
+			filtered = append(filtered, r)
+		}
+	}
+	if len(filtered) == 0 && len(renditions) > 0 {
+		shortest := renditions[0]
+		for _, r := range renditions[1:] {
+			if r.Height < shortest.Height {
+				shortest = r
+			}
+		}
+		filtered = append(filtered, shortest)
+	}
+	return filtered
+}
+
 func planBaseRenditions(info domain.MediaInfo) []domain.Rendition {
 	renditions := make([]domain.Rendition, 0, 2)
 	if info.Width >= 1920 || info.Height >= 1080 {

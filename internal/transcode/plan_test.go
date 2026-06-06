@@ -146,3 +146,47 @@ func TestValidateTranscodeRequestAcceptsRenditionWithNoCodec(t *testing.T) {
 		t.Fatalf("ValidateTranscodeRequest() error = %v, want nil when codec is empty (uses default)", err)
 	}
 }
+
+func TestCapRenditionsByHeight(t *testing.T) {
+	ladder := PlanProductionRenditionsForCodecs(
+		domain.MediaInfo{Width: 3840, Height: 2160},
+		[]string{"h264", "h265"},
+	)
+	// 4K source × 2 codecs => h264/h265 × {1080p, 720p} = 4 renditions.
+	if len(ladder) != 4 {
+		t.Fatalf("ladder len = %d, want 4 (%+v)", len(ladder), ladder)
+	}
+
+	// maxHeight 0 = uncapped.
+	if got := CapRenditionsByHeight(ladder, 0); len(got) != 4 {
+		t.Fatalf("uncapped len = %d, want 4", len(got))
+	}
+
+	// Cap at 1080 keeps every rendition <= 1080p (1080p + 720p, here both codecs).
+	capped := CapRenditionsByHeight(ladder, 1080)
+	for _, r := range capped {
+		if r.Height > 1080 {
+			t.Fatalf("rendition %s height %d exceeds cap", r.Name, r.Height)
+		}
+	}
+
+	// h264-only ladder capped at 1080 on a 4K source => 1080p + 720p, no h265.
+	h264 := CapRenditionsByHeight(
+		PlanProductionRenditionsForCodecs(domain.MediaInfo{Width: 3840, Height: 2160}, []string{"h264"}),
+		1080,
+	)
+	for _, r := range h264 {
+		if r.Codec != "h264" {
+			t.Fatalf("unexpected codec %q in %+v", r.Codec, h264)
+		}
+		if r.Height > 1080 {
+			t.Fatalf("height %d exceeds cap", r.Height)
+		}
+	}
+
+	// Cap below the whole ladder keeps exactly the shortest rendition.
+	tiny := CapRenditionsByHeight(ladder, 100)
+	if len(tiny) != 1 {
+		t.Fatalf("sub-ladder cap len = %d, want 1", len(tiny))
+	}
+}
