@@ -18,11 +18,8 @@ import (
 	"streaming-transcode/internal/events"
 	"streaming-transcode/internal/queue"
 	"streaming-transcode/internal/storage"
+	"streaming-transcode/internal/telemetry"
 	"streaming-transcode/internal/transcode"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type TranscodeRunner interface {
@@ -35,21 +32,23 @@ type TranscodeRunner interface {
 }
 
 type Dependencies struct {
-	Config   config.Config
-	Storage  storage.ObjectStorage
-	Events   *events.GatewayClient
-	Runner   TranscodeRunner
-	Logger   *log.Logger
-	ClockNow func() time.Time
+	Config    config.Config
+	Storage   storage.ObjectStorage
+	Events    *events.GatewayClient
+	Runner    TranscodeRunner
+	Logger    *log.Logger
+	ClockNow  func() time.Time
+	Telemetry *telemetry.Emitter
 }
 
 type Processor struct {
-	cfg      config.Config
-	storage  storage.ObjectStorage
-	events   *events.GatewayClient
-	runner   TranscodeRunner
-	logger   *log.Logger
-	clockNow func() time.Time
+	cfg       config.Config
+	storage   storage.ObjectStorage
+	events    *events.GatewayClient
+	runner    TranscodeRunner
+	logger    *log.Logger
+	clockNow  func() time.Time
+	telemetry *telemetry.Emitter
 }
 
 func NewProcessor(deps Dependencies) *Processor {
@@ -57,13 +56,18 @@ func NewProcessor(deps Dependencies) *Processor {
 	if now == nil {
 		now = time.Now
 	}
+	tel := deps.Telemetry
+	if tel == nil {
+		tel = telemetry.New()
+	}
 	return &Processor{
-		cfg:      deps.Config,
-		storage:  deps.Storage,
-		events:   deps.Events,
-		runner:   deps.Runner,
-		logger:   deps.Logger,
-		clockNow: now,
+		cfg:       deps.Config,
+		storage:   deps.Storage,
+		events:    deps.Events,
+		runner:    deps.Runner,
+		logger:    deps.Logger,
+		clockNow:  now,
+		telemetry: tel,
 	}
 }
 
@@ -85,17 +89,11 @@ func (p *Processor) Process(ctx context.Context, jobID string, event domain.Uplo
 }
 
 func (p *Processor) process(ctx context.Context, jobID string, attempt int, event domain.UploadCompletedEvent) error {
-	tracer := otel.Tracer("streaming-transcode")
-	ctx, jobSpan := tracer.Start(ctx, "transcode.job",
-		oteltrace.WithAttributes(
-			attribute.String("video_id", event.VideoID),
-			attribute.String("job_id", jobID),
-			attribute.Int("attempt", attempt),
-		),
-	)
-	defer jobSpan.End()
-
 	started := p.clockNow()
+	jobResult := "failed"
+	defer func() {
+		p.telemetry.EmitJob(event.VideoID, jobResult, p.clockNow().Sub(started))
+	}()
 	hostname, _ := os.Hostname()
 	profile := strings.TrimSpace(event.Transcode.Profile)
 	if profile == "" {
@@ -123,6 +121,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		return err
 	} else if exists {
 		p.logger.Printf("videoId=%s already transcoded, publishing ready", event.VideoID)
+		jobResult = "success"
 		return p.markReady(ctx, event.VideoID)
 	}
 
@@ -198,6 +197,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	p.generateThumbnail(ctx, event, sourcePath, workDir, info)
 
 	renditions := transcode.ResolveRenditions(info, event.Transcode, p.cfg.Transcode.Codecs)
+	renditions = transcode.CapRenditionsByHeight(renditions, p.cfg.Transcode.MaxRenditionHeight)
 	renditionFiles := make([]string, 0, len(renditions))
 	renditionMetrics := make([]domain.RenditionMetrics, 0, len(renditions))
 	for i, rendition := range renditions {
@@ -320,6 +320,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	if err := p.complete(ctx, result); err != nil {
 		return err
 	}
+	jobResult = "success"
 	return nil
 }
 

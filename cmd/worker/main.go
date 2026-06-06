@@ -6,11 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"streaming-transcode/internal/config"
 	"streaming-transcode/internal/events"
-	intotel "streaming-transcode/internal/otel"
 	"streaming-transcode/internal/queue"
 	"streaming-transcode/internal/storage"
 	"streaming-transcode/internal/transcode"
@@ -23,17 +21,6 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	otelShutdown, err := intotel.Init(ctx)
-	if err != nil {
-		logger.Printf("WARNING: OTEL init failed (continuing without tracing): %v", err)
-	} else {
-		defer func() {
-			shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer shutCancel()
-			_ = otelShutdown(shutCtx)
-		}()
-	}
 
 	store, err := storage.New(cfg.Storage)
 	if err != nil {
