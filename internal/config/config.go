@@ -45,19 +45,33 @@ type TranscodeConfig struct {
 	Preset           string
 	JobTimeout       time.Duration
 	MaxFileSizeBytes int64
+	// MaxRenditionHeight caps the output ladder to renditions no taller than this
+	// (0 = uncapped). Lets ops temporarily shed heavy renditions (e.g. limit a 4K
+	// source to 1080p) via TRANSCODE_MAX_HEIGHT without touching the profile code.
+	MaxRenditionHeight int
 }
 
 func FromEnv() Config {
 	endpoint, useSSL := normalizeEndpoint(env("MINIO_ENDPOINT", "http://localhost:9000"))
+	provider := env("STORAGE_PROVIDER", "minio")
+	accessKey := firstEnv("MINIO_ACCESS_KEY", "MINIO_ROOT_USER", "admin")
+	secretKey := firstEnv("MINIO_SECRET_KEY", "MINIO_ROOT_PASSWORD", "password123")
+	// For real S3, read the standard AWS credential vars so the same binary works
+	// against AWS without reusing MinIO-specific names. The S3 endpoint itself is
+	// derived from AWS_REGION in storage.NewS3Storage, not from MINIO_ENDPOINT.
+	if provider == "aws-s3" || provider == "s3" {
+		accessKey = firstEnv("AWS_ACCESS_KEY_ID", "MINIO_ACCESS_KEY", accessKey)
+		secretKey = firstEnv("AWS_SECRET_ACCESS_KEY", "MINIO_SECRET_KEY", secretKey)
+	}
 	return Config{
 		RabbitMQURL:     env("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		EventGatewayURL: strings.TrimRight(env("EVENT_GATEWAY_URL", "http://localhost:8080/api/v1"), "/"),
 		Storage: StorageConfig{
-			Provider:       env("STORAGE_PROVIDER", "minio"),
+			Provider:       provider,
 			Bucket:         env("STORAGE_BUCKET", "videos"),
 			Endpoint:       endpoint,
-			AccessKey:      firstEnv("MINIO_ACCESS_KEY", "MINIO_ROOT_USER", "admin"),
-			SecretKey:      firstEnv("MINIO_SECRET_KEY", "MINIO_ROOT_PASSWORD", "password123"),
+			AccessKey:      accessKey,
+			SecretKey:      secretKey,
 			Region:         env("AWS_REGION", "us-east-1"),
 			UseSSL:         useSSL,
 			ForcePathStyle: true,
@@ -78,8 +92,9 @@ func FromEnv() Config {
 			FFmpegPath:       env("FFMPEG_PATH", "ffmpeg"),
 			FFprobePath:      env("FFPROBE_PATH", "ffprobe"),
 			Preset:           env("FFMPEG_PRESET", "veryfast"),
-			JobTimeout:       time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
-			MaxFileSizeBytes: int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
+			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
+			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
+			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
 		},
 	}
 }

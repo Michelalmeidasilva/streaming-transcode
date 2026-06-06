@@ -1,7 +1,44 @@
 # Changelog
 
-## [Unreleased] 2026-06-04
+## [Unreleased] 2026-06-06
 ### Added
+- Explicit object-storage provider selection via `STORAGE_PROVIDER` (`minio` |
+  `aws-s3`), matching the factory pattern already used by `streaming-ingest` and
+  `streaming-distribution`. `storage.New(cfg)` now dispatches to `NewMinIOStorage`
+  or `NewS3Storage`; the latter targets `s3.<AWS_REGION>.amazonaws.com` over TLS
+  and reads `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`.
+### Changed
+- The worker no longer hard-wires `storage.NewMinIOStorage`; `cmd/worker/main.go`
+  calls `storage.New(cfg.Storage)`. The previously dead `STORAGE_PROVIDER` /
+  `Storage.Provider` config value is now honored — running against real S3 is a
+  config change, not a code change.
+
+## [Unreleased] 2026-06-04
+### Fixed
+- Long encodes (e.g. a 70-min 4K HDR source) no longer die mid-job. Three causes
+  were addressed:
+  - **Job timeout too short.** `HandleDelivery` wraps the job in a context with
+    `TRANSCODE_JOB_TIMEOUT_SECONDS` (default 3600s). ffmpeg runs under that context,
+    so at 1h it was SIGKILLed (`signal: killed`) mid-encode. Default raised to
+    10800s (3h) via `streaming-transcode/.env`.
+  - **Broker consumer_timeout.** RabbitMQ 3.13 force-closes a channel whose
+    delivery is unacked for 30 min (the worker holds the delivery for the whole
+    synchronous transcode), requeuing the message and crashing the worker with
+    "delivery channel closed". Raised `consumer_timeout` to 3h via
+    `infra/rabbitmq/rabbitmq.conf`.
+  - **Telemetry log flood.** With no OTLP collector on `:4317`, the OTel periodic
+    exporters failed every interval and flooded the logs. `otel.Init` now honours
+    `OTEL_SDK_DISABLED=true` (set in `.env`) and installs no exporters.
+- Missing sidecar subtitle made the job fail terminally: `processSubtitles`
+  downloads each referenced `.srt` and errors if absent. Documented that the
+  subtitle object must exist at its `objectKey` before the transcode runs.
+
+### Added
+- `TRANSCODE_MAX_HEIGHT` env flag caps the output ladder to renditions no taller
+  than the given height (0 = uncapped). Combined with `TRANSCODE_CODECS=h264` it
+  lets operators temporarily shed heavy renditions — e.g. limit a 4K HDR source to
+  a single-codec 1080p ladder — without editing the profile. Applied via
+  `transcode.CapRenditionsByHeight` after rendition resolution.
 - Headerless raw video (`.yuv`) is now an accepted source format. Because raw
   streams carry no container/geometry, the upload-supplied `rawVideo`
   (`width`, `height`, `fps`, `pixelFormat`) on the event is required and fed to

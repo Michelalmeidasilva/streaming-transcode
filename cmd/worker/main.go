@@ -35,7 +35,7 @@ func main() {
 		}()
 	}
 
-	store, err := storage.NewMinIOStorage(cfg.Storage)
+	store, err := storage.New(cfg.Storage)
 	if err != nil {
 		logger.Fatalf("storage init failed: %v", err)
 	}

@@ -98,6 +98,25 @@ func TestEnvReadsSetValue(t *testing.T) {
 	}
 }
 
+func TestFromEnvUsesAWSCredentialsForS3Provider(t *testing.T) {
+	os.Unsetenv("MINIO_ACCESS_KEY")
+	os.Unsetenv("MINIO_SECRET_KEY")
+	os.Unsetenv("MINIO_ROOT_USER")
+	os.Unsetenv("MINIO_ROOT_PASSWORD")
+	t.Setenv("STORAGE_PROVIDER", "aws-s3")
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+	t.Setenv("AWS_REGION", "eu-west-1")
+
+	cfg := FromEnv()
+	if cfg.Storage.Provider != "aws-s3" {
+		t.Fatalf("Provider = %q", cfg.Storage.Provider)
+	}
+	if cfg.Storage.AccessKey != "AKIAEXAMPLE" || cfg.Storage.SecretKey != "aws-secret" {
+		t.Fatalf("Storage credentials = %q/%q", cfg.Storage.AccessKey, cfg.Storage.SecretKey)
+	}
+}
+
 func TestFromEnvUsesSecondaryCredentialsFallback(t *testing.T) {
 	os.Unsetenv("MINIO_ACCESS_KEY")
 	os.Unsetenv("MINIO_SECRET_KEY")
