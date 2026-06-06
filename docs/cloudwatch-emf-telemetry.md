@@ -13,8 +13,8 @@ output channel for Batch jobs.
 ## What Changed
 
 - **Removed:** `internal/otel/` package (OTLP gRPC push pipeline, `otel.Init`, per-job
-  span). The `OTEL_SDK_DISABLED`/`OTEL_EXPORTER_OTLP_ENDPOINT` env vars are no longer
-  needed.
+  span). An `OTEL_SDK_DISABLED=true` line was kept in the local `.env` as a manual
+  stop-gap; it is moot now that the OTel SDK is removed entirely.
 - **Added:** `internal/telemetry/emf.go` — a helper called once per job that emits a
   single structured JSON log line in CloudWatch Embedded Metric Format (EMF). The record
   captures job-level metrics (`JobCount`, `JobDuration`, `FailureCount`) with dimension

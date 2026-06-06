@@ -2,9 +2,9 @@
 
 ## [Unreleased] 2026-06-06 — CloudWatch EMF telemetry
 ### Changed
-- Telemetry now emits CloudWatch EMF to stdout (job-level per job: `JobCount`, `JobDuration`, `FailureCount`; dimension `result`; namespace `VOD/streaming-transcode`).
+- Telemetry now emits CloudWatch EMF to stdout (job-level metrics per transcode job: JobCount, JobDuration, FailureCount).
 ### Removed
-- OTel SDK push pipeline (`internal/otel/`, `otel.Init`, per-job OTel span) with related deps. The `OTEL_SDK_DISABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` workaround is no longer needed.
+- OTel SDK push pipeline (`internal/otel/`, `otel.Init`, the per-job OTel span). No `/metrics` endpoint existed.
 
 ## [Unreleased] 2026-06-06
 ### Added
