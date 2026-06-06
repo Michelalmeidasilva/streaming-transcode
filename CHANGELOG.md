@@ -33,8 +33,10 @@
     "delivery channel closed". Raised `consumer_timeout` to 3h via
     `infra/rabbitmq/rabbitmq.conf`.
   - **Telemetry log flood.** With no OTLP collector on `:4317`, the OTel periodic
-    exporters failed every interval and flooded the logs. `otel.Init` now honours
-    `OTEL_SDK_DISABLED=true` (set in `.env`) and installs no exporters.
+    exporters failed every interval and flooded the logs. `OTEL_SDK_DISABLED=true`
+    was added to `.env` as a manual stop-gap (`otel.Init` was not modified to read
+    it). Resolved properly by the 2026-06-06 CloudWatch EMF migration, which removed
+    the OTel SDK entirely.
 - Missing sidecar subtitle made the job fail terminally: `processSubtitles`
   downloads each referenced `.srt` and errors if absent. Documented that the
   subtitle object must exist at its `objectKey` before the transcode runs.
