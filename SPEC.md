@@ -27,6 +27,10 @@ Consumes `video.upload.completed` from RabbitMQ exchange `video_events`, queue
 
 **Job state lifecycle:** `queued → transcoding → packaging → ready | failed`.
 
+Packaged HLS/DASH output (many small segments per rendition) is uploaded to
+object storage with bounded parallelism (`maxUploadConcurrency = 8`); the first
+upload error cancels the remaining in-flight uploads and fails the job.
+
 ## Bitrate Ladder
 
 | Resolution | Video bitrate | Codec |

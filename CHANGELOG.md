@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased] 2026-06-07
+### Changed
+- Packaged output upload (`uploadDir`) is now bounded-parallel (`maxUploadConcurrency = 8`) instead of one file at a time. HLS produces many small segments per rendition; sequential upload dominated job wall-clock. The first upload error cancels remaining in-flight uploads and is returned.
+
 ## [Unreleased] 2026-06-06 — CloudWatch EMF telemetry
 ### Changed
 - Telemetry now emits CloudWatch EMF to stdout (job-level metrics per transcode job: JobCount, JobDuration, FailureCount).

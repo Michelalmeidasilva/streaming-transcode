@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 )
 
 type fakeStorage struct {
+	mu        sync.Mutex
 	existsMap map[string]bool
 	downloads []string
 	uploads   []string
@@ -29,7 +31,9 @@ type fakeStorage struct {
 }
 
 func (s *fakeStorage) Download(_ context.Context, _, key, destination string) error {
+	s.mu.Lock()
 	s.downloads = append(s.downloads, key)
+	s.mu.Unlock()
 	return os.WriteFile(destination, []byte("source"), 0o644)
 }
 
@@ -37,7 +41,9 @@ func (s *fakeStorage) UploadFile(_ context.Context, _, key, source string) error
 	if s.uploadErr != nil {
 		return s.uploadErr
 	}
+	s.mu.Lock()
 	s.uploads = append(s.uploads, key+"="+filepath.Base(source))
+	s.mu.Unlock()
 	return nil
 }
 

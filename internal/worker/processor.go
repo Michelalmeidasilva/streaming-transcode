@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"streaming-transcode/internal/config"
@@ -413,8 +414,19 @@ func (p *Processor) generateThumbnail(ctx context.Context, event domain.UploadCo
 	}
 }
 
+// maxUploadConcurrency bounds parallel object uploads. Packaged HLS output is
+// many small segments per rendition; uploading them one-by-one over the network
+// dominated job wall-clock. Uploads are independent, so they run in parallel
+// under this cap (kept modest to avoid exhausting storage connections).
+const maxUploadConcurrency = 8
+
+// uploadDir uploads every file under dir to bucket, keyed by prefix + relative
+// path, with bounded parallelism. The first upload error is returned and
+// cancels the remaining in-flight uploads.
 func (p *Processor) uploadDir(ctx context.Context, bucket, dir, prefix string) error {
-	return filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+	type uploadItem struct{ key, path string }
+	var items []uploadItem
+	if err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -425,9 +437,42 @@ func (p *Processor) uploadDir(ctx context.Context, bucket, dir, prefix string) e
 		if err != nil {
 			return err
 		}
-		key := filepath.ToSlash(filepath.Join(prefix, rel))
-		return p.storage.UploadFile(ctx, bucket, key, path)
-	})
+		items = append(items, uploadItem{key: filepath.ToSlash(filepath.Join(prefix, rel)), path: path})
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sem := make(chan struct{}, maxUploadConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+
+	for _, item := range items {
+		if ctx.Err() != nil {
+			break
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it uploadItem) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := p.storage.UploadFile(ctx, bucket, it.key, it.path); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+					cancel()
+				}
+				mu.Unlock()
+			}
+		}(item)
+	}
+
+	wg.Wait()
+	return firstErr
 }
 
 func (p *Processor) writeAndUploadJSON(ctx context.Context, bucket, localPath, key string, value any) error {
