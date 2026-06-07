@@ -26,6 +26,9 @@ dataset/**/*.y4m
 
 # Local binaries and reports from ad-hoc runs
 transcode-local
+# ...but keep the command's source package (the bare pattern above also matched
+# the cmd/transcode-local/ dir, leaving the Batch entrypoint untracked).
+!cmd/transcode-local/
 coverage.out
 
 # macOS noise

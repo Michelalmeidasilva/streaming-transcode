@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] 2026-06-07 — Source download uses the event's full objectKey
+### Fixed
+- The dev RabbitMQ→worker path failed to download `raw/`-prefixed sources (`The specified key does not exist`): `streaming-ingest` published only `videoId`/`filename` (basename), so `resolveObjectKey` rebuilt `<videoId>/<filename>` and dropped `raw/`. Fixed in `streaming-ingest` by publishing the full `objectKey`; the worker already prefers `event.ObjectKey`, so it now downloads the exact key. No code change here — `SPEC.md` clarified (step 1) that the source key comes from the event. See `streaming-ingest/docs/object-key-preservation.md`.
+
+## [Unreleased] 2026-06-07 — Batch entrypoint (transcode-local)
+### Added
+- `cmd/transcode-local` now doubles as the **AWS Batch job entrypoint**. Invoked with a single positional S3 key (`transcode-local raw/<videoId>/<object>`), it derives the `videoId`, rebuilds a minimal `UploadCompletedEvent`, and runs the existing `worker.Processor` pipeline. Exit 0 = job SUCCEEDED, exit ≠0 = FAILED (reprocessable). The flag-based local-file mode (`--input/--output`) is preserved; a positional argument selects Batch mode. New `batch.go` (`extractVideoID`, `buildBatchEvent`, `batchJobID`, `runBatchJob`, `runBatchMode`) with unit tests.
+### Notes
+- Persistence stays via the Event Gateway (`PATCH /api/v1/upload-state/videos/:id`), not direct MongoDB — `streaming-ingest` remains the single writer of the `videos` collection. Batch mode does not advertise sidecar subtitles and rejects headerless `.yuv` (no geometry in the S3 event).
+
 ## [Unreleased] 2026-06-07
 ### Changed
 - Packaged output upload (`uploadDir`) is now bounded-parallel (`maxUploadConcurrency = 8`) instead of one file at a time. HLS produces many small segments per rendition; sequential upload dominated job wall-clock. The first upload error cancels remaining in-flight uploads and is returned.
