@@ -123,7 +123,13 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	} else if exists {
 		p.logger.Printf("videoId=%s already transcoded, publishing ready", event.VideoID)
 		jobResult = "success"
-		return p.markReady(ctx, event.VideoID)
+		// The output already exists, so the job is a no-op success. The ready event is
+		// best-effort — don't fail an already-transcoded video just because the gateway
+		// can't publish the event right now.
+		if err := p.markReady(ctx, event.VideoID); err != nil {
+			p.logger.Printf("ready event publish failed (non-fatal): %v", err)
+		}
+		return nil
 	}
 
 	if err := p.setProcessingState(ctx, "transcode.queued", event.VideoID, "queued", 5, map[string]any{
@@ -543,7 +549,15 @@ func (p *Processor) complete(ctx context.Context, result domain.TranscodeResult)
 	if err := p.events.PatchVideo(ctx, result.VideoID, patch); err != nil {
 		return err
 	}
-	return p.markReady(ctx, result.VideoID)
+	// PatchVideo above already set the catalog state to ready. The "ready" lifecycle
+	// event is best-effort: failing to publish it (e.g. the gateway's RabbitMQ publish
+	// returning 500) must NOT fail the job — the media is produced and the video is
+	// already marked ready. Treating it as fatal made Batch report FAILED on jobs whose
+	// output was complete and serving.
+	if err := p.markReady(ctx, result.VideoID); err != nil {
+		p.logger.Printf("ready event publish failed (non-fatal, video already marked ready): %v", err)
+	}
+	return nil
 }
 
 func (p *Processor) markReady(ctx context.Context, videoID string) error {

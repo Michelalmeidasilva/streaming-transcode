@@ -45,6 +45,14 @@ Two entrypoints drive the **same** pipeline (`worker.Processor.Process`):
    prod the gateway base URL comes from `EVENT_GATEWAY_URL` (the ingest Lambda
    Function URL + `/api/v1`).
 
+**Event publish vs. job success:** the `PATCH /upload-state/videos/:id` that marks the
+video `ready` (the catalog state) is the success criterion; the lifecycle **events**
+(`POST /api/v1/events`, which the gateway forwards to RabbitMQ) are **best-effort**. A
+failure to publish an event — e.g. the gateway returning 500 because its RabbitMQ publish
+failed — is logged but does **not** fail the job once the media is produced and the video
+is marked ready. (Previously the `ready` event being fatal made Batch report `FAILED` on
+jobs whose output was complete and serving.)
+
 **Job state lifecycle:** `queued → transcoding → packaging → ready | failed`.
 
 Packaged HLS/DASH output (many small segments per rendition) is uploaded to

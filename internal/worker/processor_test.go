@@ -287,6 +287,58 @@ func TestProcessorProcessSuccess(t *testing.T) {
 	}
 }
 
+// When the gateway can mark the video ready (PATCH /videos) but the lifecycle event
+// publish (POST /events → RabbitMQ) returns 500, the job must still succeed: the media
+// is produced and the catalog state is set. Regression for transcode jobs reported
+// FAILED despite complete, serving output.
+func TestProcessorSucceedsWhenEventPublishFails(t *testing.T) {
+	store := &fakeStorage{existsMap: map[string]bool{}}
+	runner := &fakeRunner{info: domain.MediaInfo{
+		Width: 1920, Height: 1080, DurationSeconds: 10, VideoCodec: "h264", AudioCodec: "aac",
+	}}
+
+	var sawReadyPatch bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		body := map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if r.Method == http.MethodPost { // lifecycle events: gateway/RabbitMQ down
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/upload-state/videos/video-1") &&
+			body["status"] == "ready" && body["processingStatus"] == "ready" {
+			sawReadyPatch = true
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	now := time.Date(2026, 5, 9, 22, 0, 0, 0, time.UTC)
+	cfg := config.Config{
+		EventGatewayURL: server.URL + "/api/v1",
+		Storage:         config.StorageConfig{Bucket: "videos"},
+		Transcode:       config.TranscodeConfig{WorkDir: t.TempDir(), Profile: "production-h264-hls-dash", JobTimeout: time.Minute},
+	}
+	processor := NewProcessor(Dependencies{
+		Config: cfg, Storage: store, Events: events.NewGatewayClient(cfg.EventGatewayURL),
+		Runner: runner, Logger: log.New(io.Discard, "", 0), ClockNow: func() time.Time { return now },
+	})
+
+	err := processor.Process(context.Background(), "job-1", domain.UploadCompletedEvent{
+		VideoID: "video-1", Filename: "source.mp4", ObjectKey: "video-1/source.mp4", Bucket: "videos",
+	})
+	if err != nil {
+		t.Fatalf("Process() should succeed when only the event publish fails, got %v", err)
+	}
+	if !sawReadyPatch {
+		t.Fatalf("expected the ready PATCH (catalog state) to be sent")
+	}
+	if len(store.uploads) < 6 {
+		t.Fatalf("expected media to be uploaded, got %v", store.uploads)
+	}
+}
+
 func TestNewProcessorUsesDefaultClockWhenNil(t *testing.T) {
 	processor := NewProcessor(Dependencies{
 		Config: config.Config{
