@@ -89,6 +89,7 @@ func ResolveRenditions(info domain.MediaInfo, request domain.TranscodeRequest, d
 				Preset:      preset,
 			})
 		}
+		resolved = capRenditionsToSource(resolved, info)
 		if len(resolved) > 0 {
 			return resolved
 		}
@@ -187,6 +188,40 @@ func normalizeCodec(codec string) string {
 	default:
 		return ""
 	}
+}
+
+// capRenditionsToSource drops renditions taller than the source (no upscaling).
+// If every requested rendition is above the source it emits one rendition per
+// distinct codec at the source resolution, so the ladder is never empty.
+func capRenditionsToSource(renditions []domain.Rendition, info domain.MediaInfo) []domain.Rendition {
+	if info.Height <= 0 {
+		return renditions
+	}
+	kept := make([]domain.Rendition, 0, len(renditions))
+	for _, r := range renditions {
+		if r.Height <= info.Height {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) > 0 {
+		return kept
+	}
+	seen := make(map[string]bool)
+	for _, r := range renditions {
+		if seen[r.Codec] {
+			continue
+		}
+		seen[r.Codec] = true
+		kept = append(kept, domain.Rendition{
+			Name:        fmt.Sprintf("%s-%dp", r.Codec, info.Height),
+			Width:       info.Width,
+			Height:      info.Height,
+			BitrateKbps: defaultBitrateForDimensions(info.Width, info.Height),
+			Codec:       r.Codec,
+			Preset:      r.Preset,
+		})
+	}
+	return kept
 }
 
 func normalizeCodecs(codecs []string) []string {

@@ -147,6 +147,35 @@ func TestValidateTranscodeRequestAcceptsRenditionWithNoCodec(t *testing.T) {
 	}
 }
 
+func TestResolveRenditionsDropsRenditionsAboveSource(t *testing.T) {
+	info := domain.MediaInfo{Width: 1280, Height: 720}
+	req := domain.TranscodeRequest{Renditions: []domain.RequestedRendition{
+		{Width: 1280, Height: 720, Codec: "h264"},
+		{Width: 1920, Height: 1080, Codec: "h264"}, // above source -> dropped
+	}}
+	got := ResolveRenditions(info, req, []string{"h264"})
+	if len(got) != 1 || got[0].Height != 720 {
+		t.Fatalf("expected only the 720p rendition, got %+v", got)
+	}
+}
+
+func TestResolveRenditionsFallsBackToSourceHeightPerCodec(t *testing.T) {
+	info := domain.MediaInfo{Width: 1280, Height: 720}
+	req := domain.TranscodeRequest{Renditions: []domain.RequestedRendition{
+		{Width: 1920, Height: 1080, Codec: "h264"}, // all above source
+		{Width: 1920, Height: 1080, Codec: "av1"},
+	}}
+	got := ResolveRenditions(info, req, []string{"h264"})
+	if len(got) != 2 {
+		t.Fatalf("expected one rendition per codec at source height, got %+v", got)
+	}
+	for _, r := range got {
+		if r.Height != 720 || r.Width != 1280 {
+			t.Fatalf("expected source dimensions, got %+v", r)
+		}
+	}
+}
+
 func TestCapRenditionsByHeight(t *testing.T) {
 	ladder := PlanProductionRenditionsForCodecs(
 		domain.MediaInfo{Width: 3840, Height: 2160},
