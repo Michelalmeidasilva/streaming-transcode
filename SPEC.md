@@ -63,6 +63,8 @@ upload error cancels the remaining in-flight uploads and fails the job.
 
 GOP alignment (`-g 60 -keyint_min 60 -sc_threshold 0`) is non-negotiable.
 
+**Upscaling guard:** when explicit renditions are requested (via `TranscodeRequest.Renditions`), any rendition taller than the source is silently dropped. If all requested renditions exceed the source height, one rendition per distinct codec is produced at the source dimensions, so the ladder is never empty. Events without an explicit `transcode` field continue to use the production ladder defaults from `PlanProductionRenditionsForCodecs`.
+
 ## Telemetry (CloudWatch EMF)
 
 One EMF JSON line is written to stdout per job:

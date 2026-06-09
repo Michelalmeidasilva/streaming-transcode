@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased] 2026-06-09
+### Added
+- Guard de upscaling: `ResolveRenditions` descarta renditions acima da altura da fonte; fallback de 1 rendition por codec na altura da fonte. Mantém retrocompat: evento sem `transcode` usa os defaults.
+
 ## [Unreleased] 2026-06-07 — Source download uses the event's full objectKey
 ### Fixed
 - The dev RabbitMQ→worker path failed to download `raw/`-prefixed sources (`The specified key does not exist`): `streaming-ingest` published only `videoId`/`filename` (basename), so `resolveObjectKey` rebuilt `<videoId>/<filename>` and dropped `raw/`. Fixed in `streaming-ingest` by publishing the full `objectKey`; the worker already prefers `event.ObjectKey`, so it now downloads the exact key. No code change here — `SPEC.md` clarified (step 1) that the source key comes from the event. See `streaming-ingest/docs/object-key-preservation.md`.
