@@ -17,4 +17,9 @@ COPY --from=build /out/streaming-transcode /usr/local/bin/streaming-transcode
 COPY --from=build /out/transcode-local /usr/local/bin/transcode-local
 
 ENV TRANSCODE_WORKDIR=/tmp/transcode
-ENTRYPOINT ["streaming-transcode"]
+# CMD (não ENTRYPOINT): o worker RabbitMQ é o default em dev, mas o AWS Batch
+# sobrescreve o command com ["transcode-local", "<s3-key>"]. Com ENTRYPOINT fixo o
+# command seria ANEXADO (rodando o worker, que falha ao conectar no RabbitMQ);
+# com CMD o command do Batch SUBSTITUI e roda o binário transcode-local direto.
+# Ambos os binários estão no PATH (/usr/local/bin).
+CMD ["streaming-transcode"]

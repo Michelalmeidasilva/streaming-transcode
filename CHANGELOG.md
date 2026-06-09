@@ -4,6 +4,22 @@
 ### Added
 - Guard de upscaling: `ResolveRenditions` descarta renditions acima da altura da fonte; fallback de 1 rendition por codec na altura da fonte. Mantém retrocompat: evento sem `transcode` usa os defaults.
 
+## [Unreleased] 2026-06-08 — worker: lifecycle event publish is best-effort (não falha o job)
+### Fixed
+- Jobs do Batch reportavam `FAILED` (exit 1) mesmo com a saída transcodada **completa e
+  servindo** no catálogo. Causa: em `internal/worker/processor.go`, `complete()` tratava o
+  evento `ready` (`markReady` → `POST /api/v1/events`) como fatal, e o atalho "already
+  transcoded" também retornava esse erro. Quando o gateway de ingest retornava **500** ao
+  publicar no RabbitMQ (`POST /events`), o `PATCH /upload-state/videos/:id` (que marca
+  `ready` no Mongo) **funcionava** — o vídeo aparecia no catálogo — mas o job saía com erro.
+  Agora os **eventos** de ciclo de vida são best-effort (logados, não fatais); o sucesso do
+  job é decidido pela produção da mídia + o PATCH `ready`. Ver `docs/event-publish-nonfatal.md`.
+  Imagem rebuildada e publicada no ECR (`vod-transcode:latest`).
+
+## [Unreleased] 2026-06-08 — Dockerfile: CMD instead of ENTRYPOINT for Batch
+### Fixed
+- AWS Batch job failed with `rabbitmq init failed: connect rabbitmq: dial tcp 127.0.0.1:5672: connection refused` (exit 1). The Dockerfile pinned `ENTRYPOINT ["streaming-transcode"]` (the RabbitMQ worker), but the Batch job definition sets `command = ["transcode-local", "<s3-key>"]`. In Docker, `command` is **appended** to `ENTRYPOINT`, so Batch actually ran `streaming-transcode transcode-local <key>` — the RabbitMQ worker, which dies trying to reach a non-existent broker. Changed to `CMD ["streaming-transcode"]` so the Batch `command` **replaces** the default and runs the `transcode-local` binary directly (both binaries are on `PATH`). Verified E2E: S3 `raw/` → EventBridge → Batch → ffmpeg → shaka-packager → DASH segments uploaded to `transcoded/`. Dev worker behavior unchanged (CMD default).
+
 ## [Unreleased] 2026-06-07 — Source download uses the event's full objectKey
 ### Fixed
 - The dev RabbitMQ→worker path failed to download `raw/`-prefixed sources (`The specified key does not exist`): `streaming-ingest` published only `videoId`/`filename` (basename), so `resolveObjectKey` rebuilt `<videoId>/<filename>` and dropped `raw/`. Fixed in `streaming-ingest` by publishing the full `objectKey`; the worker already prefers `event.ObjectKey`, so it now downloads the exact key. No code change here — `SPEC.md` clarified (step 1) that the source key comes from the event. See `streaming-ingest/docs/object-key-preservation.md`.
