@@ -144,7 +144,7 @@ func TestProcessorProcessUsesCustomTranscodeRequest(t *testing.T) {
 	}
 }
 
-func (r *fakeRunner) PackageHLS(_ context.Context, _ string, _ string, outDir string) error {
+func (r *fakeRunner) PackageHLS(_ context.Context, _ string, _ string, outDir string, _ int) error {
 	if r.packageHLSErr != nil {
 		return r.packageHLSErr
 	}
@@ -157,7 +157,7 @@ func (r *fakeRunner) PackageHLS(_ context.Context, _ string, _ string, outDir st
 	return os.WriteFile(filepath.Join(outDir, "segment-00000.m4s"), []byte("segment"), 0o644)
 }
 
-func (r *fakeRunner) PackageDASH(_ context.Context, _ []string, outDir string) error {
+func (r *fakeRunner) PackageDASH(_ context.Context, _ []string, outDir string, _ int) error {
 	if r.packageDASH != nil {
 		return r.packageDASH
 	}

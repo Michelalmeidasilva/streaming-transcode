@@ -26,8 +26,8 @@ import (
 type TranscodeRunner interface {
 	Probe(source string) (domain.MediaInfo, error)
 	TranscodeRendition(ctx context.Context, source string, raw *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
-	PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string) error
-	PackageDASH(ctx context.Context, renditionFiles []string, outDir string) error
+	PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string, segmentSeconds int) error
+	PackageDASH(ctx context.Context, renditionFiles []string, outDir string, segmentSeconds int) error
 	ExtractThumbnail(ctx context.Context, source string, raw *domain.RawVideoParams, output string, atSeconds float64) error
 	ConvertSRTToVTT(ctx context.Context, srcSRT, outVTT string) error
 }
@@ -105,7 +105,19 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		profile = p.cfg.Transcode.Profile
 	}
 	sourceKey := event.ObjectKey
+	protocols := transcode.ResolveProtocols(event.Transcode.Protocols)
+	segmentSeconds := transcode.ResolveSegmentSeconds(event.Transcode.SegmentSeconds)
+	wantHLS := transcode.HasProtocol(protocols, "hls")
+	wantDASH := transcode.HasProtocol(protocols, "dash")
 	hlsManifest := fmt.Sprintf("transcoded/%s/hls/master.m3u8", event.VideoID)
+	dashManifest := fmt.Sprintf("transcoded/%s/dash/manifest.mpd", event.VideoID)
+	// Idempotency probe: an already-finished job is detected by the canonical
+	// manifest of a requested protocol. HLS master is preferred; dash-only jobs
+	// probe the MPD instead.
+	idempotencyManifest := hlsManifest
+	if !wantHLS {
+		idempotencyManifest = dashManifest
+	}
 	metricsPath := fmt.Sprintf("metrics/%s/transcode-result.json", event.VideoID)
 	observabilityPath := fmt.Sprintf("metrics/%s/observability.json", event.VideoID)
 	fingerprint := processingFingerprint(event.VideoID, profile, sourceKey, event.SourceETag, event.SourceVersion)
@@ -122,7 +134,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		return termErr
 	}
 
-	if exists, err := p.storage.Exists(ctx, event.Bucket, hlsManifest); err != nil {
+	if exists, err := p.storage.Exists(ctx, event.Bucket, idempotencyManifest); err != nil {
 		return err
 	} else if exists {
 		p.logger.Printf("videoId=%s already transcoded, publishing ready", event.VideoID)
@@ -243,36 +255,46 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	}); err != nil {
 		p.logger.Printf("packaging state publish failed: %v", err)
 	}
-	for _, rendition := range renditions {
-		if err := p.runner.PackageHLS(ctx, rendition.OutputPath, rendition.Name, filepath.Join(hlsDir, rendition.Name)); err != nil {
-			_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_failed", err)
+	var subtitleTracks []domain.SubtitleTrack
+	if wantHLS {
+		for _, rendition := range renditions {
+			if err := p.runner.PackageHLS(ctx, rendition.OutputPath, rendition.Name, filepath.Join(hlsDir, rendition.Name), segmentSeconds); err != nil {
+				_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_failed", err)
+				return err
+			}
+		}
+		tracks, err := p.processSubtitles(ctx, event, workDir, hlsDir, info.DurationSeconds)
+		if err != nil {
+			_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "subtitle_failed", err)
+			return err
+		}
+		subtitleTracks = tracks
+
+		hasAudio := strings.TrimSpace(info.AudioCodec) != ""
+		if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions, hasAudio, subtitleTracks...); err != nil {
+			_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_master_failed", err)
 			return err
 		}
 	}
-	subtitleTracks, err := p.processSubtitles(ctx, event, workDir, hlsDir, info.DurationSeconds)
-	if err != nil {
-		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "subtitle_failed", err)
-		return err
-	}
-
-	hasAudio := strings.TrimSpace(info.AudioCodec) != ""
-	if err := transcode.WriteHLSMaster(filepath.Join(hlsDir, "master.m3u8"), renditions, hasAudio, subtitleTracks...); err != nil {
-		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "hls_master_failed", err)
-		return err
-	}
 
 	dashDir := filepath.Join(outputDir, "dash")
-	if err := p.runner.PackageDASH(ctx, renditionFiles, dashDir); err != nil {
-		_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "dash_failed", err)
-		return err
+	if wantDASH {
+		if err := p.runner.PackageDASH(ctx, renditionFiles, dashDir, segmentSeconds); err != nil {
+			_ = p.fail(ctx, event.VideoID, jobID, attempt, fingerprint, "dash_failed", err)
+			return err
+		}
 	}
 	_ = p.progress(ctx, event.VideoID, jobID, attempt, fingerprint, "packaged", 85)
 
-	if err := p.uploadDir(ctx, event.Bucket, filepath.Join(outputDir, "hls"), fmt.Sprintf("transcoded/%s/hls", event.VideoID)); err != nil {
-		return err
+	if wantHLS {
+		if err := p.uploadDir(ctx, event.Bucket, filepath.Join(outputDir, "hls"), fmt.Sprintf("transcoded/%s/hls", event.VideoID)); err != nil {
+			return err
+		}
 	}
-	if err := p.uploadDir(ctx, event.Bucket, filepath.Join(outputDir, "dash"), fmt.Sprintf("transcoded/%s/dash", event.VideoID)); err != nil {
-		return err
+	if wantDASH {
+		if err := p.uploadDir(ctx, event.Bucket, filepath.Join(outputDir, "dash"), fmt.Sprintf("transcoded/%s/dash", event.VideoID)); err != nil {
+			return err
+		}
 	}
 	_ = p.progress(ctx, event.VideoID, jobID, attempt, fingerprint, "outputs.uploaded", 92)
 
@@ -297,6 +319,15 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		Renditions:           renditionMetrics,
 	}
 
+	hlsResultPath := ""
+	if wantHLS {
+		hlsResultPath = hlsManifest
+	}
+	dashResultPath := ""
+	if wantDASH {
+		dashResultPath = dashManifest
+	}
+
 	result := domain.TranscodeResult{
 		VideoID:           event.VideoID,
 		JobID:             jobID,
@@ -309,8 +340,9 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		MediaInfo:         info,
 		Renditions:        renditions,
 		Subtitles:         subtitleTracks,
-		HLSManifestPath:   hlsManifest,
-		DASHManifestPath:  fmt.Sprintf("transcoded/%s/dash/manifest.mpd", event.VideoID),
+		HLSManifestPath:   hlsResultPath,
+		DASHManifestPath:  dashResultPath,
+		Protocols:         protocols,
 		MetricsPath:       metricsPath,
 		ObservabilityPath: observabilityPath,
 		ElapsedSeconds:    elapsed,
@@ -541,6 +573,7 @@ func (p *Processor) complete(ctx context.Context, result domain.TranscodeResult)
 		"playback": map[string]any{
 			"hlsManifestPath":  result.HLSManifestPath,
 			"dashManifestPath": result.DASHManifestPath,
+			"protocols":        result.Protocols,
 			"renditions":       result.Renditions,
 			"subtitles":        result.Subtitles,
 		},
