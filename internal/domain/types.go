@@ -70,10 +70,12 @@ type RequestedRendition struct {
 }
 
 type TranscodeRequest struct {
-	Profile    string               `json:"profile,omitempty"`
-	Codecs     []string             `json:"codecs,omitempty"`
-	Preset     string               `json:"preset,omitempty"`
-	Renditions []RequestedRendition `json:"renditions,omitempty"`
+	Profile        string               `json:"profile,omitempty"`
+	Codecs         []string             `json:"codecs,omitempty"`
+	Protocols      []string             `json:"protocols,omitempty"`
+	SegmentSeconds int                  `json:"segmentSeconds,omitempty"`
+	Preset         string               `json:"preset,omitempty"`
+	Renditions     []RequestedRendition `json:"renditions,omitempty"`
 }
 
 type MediaInfo struct {
@@ -158,6 +160,7 @@ type TranscodeResult struct {
 	Subtitles         []SubtitleTrack  `json:"subtitles,omitempty"`
 	HLSManifestPath   string           `json:"hlsManifestPath"`
 	DASHManifestPath  string           `json:"dashManifestPath"`
+	Protocols         []string         `json:"protocols,omitempty"`
 	MetricsPath       string           `json:"metricsPath"`
 	ObservabilityPath string           `json:"observabilityPath"`
 	ElapsedSeconds    float64          `json:"elapsedSeconds"`
