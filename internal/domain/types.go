@@ -133,6 +133,7 @@ type Rendition struct {
 
 type JobObservability struct {
 	Hostname             string             `json:"hostname"`
+	MachineLabel         string             `json:"machineLabel,omitempty"`
 	CPUCores             int                `json:"cpuCores"`
 	StartedAt            time.Time          `json:"startedAt"`
 	CompletedAt          time.Time          `json:"completedAt"`

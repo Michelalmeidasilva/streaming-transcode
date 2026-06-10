@@ -49,6 +49,10 @@ type TranscodeConfig struct {
 	// (0 = uncapped). Lets ops temporarily shed heavy renditions (e.g. limit a 4K
 	// source to 1080p) via TRANSCODE_MAX_HEIGHT without touching the profile code.
 	MaxRenditionHeight int
+	// MachineLabel identifies the host running the worker for benchmark runs
+	// (e.g. an EC2 instance type like "c7g.xlarge"). Empty falls back to the
+	// hostname at the point the job observability is assembled.
+	MachineLabel string
 }
 
 func FromEnv() Config {
@@ -86,15 +90,16 @@ func FromEnv() Config {
 			RetryDelaySeconds: envInt("TRANSCODE_RETRY_DELAY_SECONDS", 60),
 		},
 		Transcode: TranscodeConfig{
-			WorkDir:          env("TRANSCODE_WORKDIR", "/tmp/transcode"),
-			Profile:          env("TRANSCODE_PROFILE", "production-h264-hls-dash"),
-			Codecs:           envList("TRANSCODE_CODECS", []string{"h264"}),
-			FFmpegPath:       env("FFMPEG_PATH", "ffmpeg"),
-			FFprobePath:      env("FFPROBE_PATH", "ffprobe"),
-			Preset:           env("FFMPEG_PRESET", "veryfast"),
+			WorkDir:            env("TRANSCODE_WORKDIR", "/tmp/transcode"),
+			Profile:            env("TRANSCODE_PROFILE", "production-h264-hls-dash"),
+			Codecs:             envList("TRANSCODE_CODECS", []string{"h264"}),
+			FFmpegPath:         env("FFMPEG_PATH", "ffmpeg"),
+			FFprobePath:        env("FFPROBE_PATH", "ffprobe"),
+			Preset:             env("FFMPEG_PRESET", "veryfast"),
 			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
+			MachineLabel:       env("TRANSCODE_MACHINE_LABEL", ""),
 		},
 	}
 }

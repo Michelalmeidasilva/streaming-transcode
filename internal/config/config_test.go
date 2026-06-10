@@ -128,3 +128,11 @@ func TestFromEnvUsesSecondaryCredentialsFallback(t *testing.T) {
 		t.Fatalf("Storage credentials = %q/%q", cfg.Storage.AccessKey, cfg.Storage.SecretKey)
 	}
 }
+
+func TestFromEnvMachineLabel(t *testing.T) {
+	t.Setenv("TRANSCODE_MACHINE_LABEL", "c7g.xlarge")
+	cfg := FromEnv()
+	if cfg.Transcode.MachineLabel != "c7g.xlarge" {
+		t.Fatalf("MachineLabel = %q, want c7g.xlarge", cfg.Transcode.MachineLabel)
+	}
+}

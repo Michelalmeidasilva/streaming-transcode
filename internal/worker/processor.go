@@ -96,6 +96,10 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 		p.telemetry.EmitJob(event.VideoID, jobResult, p.clockNow().Sub(started))
 	}()
 	hostname, _ := os.Hostname()
+	machineLabel := strings.TrimSpace(p.cfg.Transcode.MachineLabel)
+	if machineLabel == "" {
+		machineLabel = hostname
+	}
 	profile := strings.TrimSpace(event.Transcode.Profile)
 	if profile == "" {
 		profile = p.cfg.Transcode.Profile
@@ -283,6 +287,7 @@ func (p *Processor) process(ctx context.Context, jobID string, attempt int, even
 	}
 	observability := domain.JobObservability{
 		Hostname:             hostname,
+		MachineLabel:         machineLabel,
 		CPUCores:             runtime.NumCPU(),
 		StartedAt:            started.UTC(),
 		CompletedAt:          p.clockNow().UTC(),
@@ -507,11 +512,13 @@ func (p *Processor) complete(ctx context.Context, result domain.TranscodeResult)
 		"metricsPath":       result.MetricsPath,
 		"observabilityPath": result.ObservabilityPath,
 		"observability":     result.Observability,
-		"sourceETag":        result.SourceETag,
-		"sourceVersion":     result.SourceVersion,
-		"attempt":           result.Attempt,
-		"fingerprint":       result.Fingerprint,
-		"completedAt":       result.CompletedAt.Format(time.RFC3339),
+		// top-level shortcut so consumers can filter/group runs without unpacking observability
+		"machineLabel":  result.Observability.MachineLabel,
+		"sourceETag":    result.SourceETag,
+		"sourceVersion": result.SourceVersion,
+		"attempt":       result.Attempt,
+		"fingerprint":   result.Fingerprint,
+		"completedAt":   result.CompletedAt.Format(time.RFC3339),
 	}
 	if err := p.publishStatus(ctx, "packaging.completed", result.VideoID, payload); err != nil {
 		p.logger.Printf("packaging event failed: %v", err)

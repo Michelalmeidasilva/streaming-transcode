@@ -471,6 +471,58 @@ func TestProcessorHandleDeliveryAndFailure(t *testing.T) {
 	}
 }
 
+func TestProcessorMachineLabelInCompletedEvent(t *testing.T) {
+	store := &fakeStorage{existsMap: map[string]bool{}}
+	runner := &fakeRunner{info: domain.MediaInfo{
+		Width:           1920,
+		Height:          1080,
+		DurationSeconds: 10,
+		VideoCodec:      "h264",
+		AudioCodec:      "aac",
+	}}
+	var requests []capturedRequest
+	processor := newTestProcessor(t, store, runner, &requests)
+	processor.cfg.Transcode.MachineLabel = "c7g.xlarge"
+
+	event := domain.UploadCompletedEvent{
+		VideoID:   "video-ml",
+		Filename:  "source.mp4",
+		ObjectKey: "video-ml/source.mp4",
+		Bucket:    "videos",
+	}
+	if err := processor.Process(context.Background(), "job-ml", event); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+
+	var sawCompleted bool
+	for _, req := range requests {
+		if req.method != http.MethodPost {
+			continue
+		}
+		if req.body["eventType"] != "transcode.completed" {
+			continue
+		}
+		sawCompleted = true
+		payload, _ := req.body["payload"].(map[string]any)
+		if payload == nil {
+			t.Fatalf("transcode.completed payload is nil in request %#v", req.body)
+		}
+		if got, _ := payload["machineLabel"].(string); got != "c7g.xlarge" {
+			t.Fatalf("payload[machineLabel] = %q, want c7g.xlarge", got)
+		}
+		obs, _ := payload["observability"].(map[string]any)
+		if obs == nil {
+			t.Fatalf("payload[observability] is nil")
+		}
+		if got, _ := obs["machineLabel"].(string); got != "c7g.xlarge" {
+			t.Fatalf("observability[machineLabel] = %q, want c7g.xlarge", got)
+		}
+	}
+	if !sawCompleted {
+		t.Fatalf("no transcode.completed event found in requests = %#v", requests)
+	}
+}
+
 func TestProcessorGeneratesThumbnail(t *testing.T) {
 	store := &fakeStorage{existsMap: map[string]bool{}}
 	runner := &fakeRunner{info: domain.MediaInfo{
