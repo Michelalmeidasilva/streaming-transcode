@@ -2,6 +2,10 @@
 
 ## [Unreleased] 2026-06-10
 ### Added
+- cmd/benchmark: encode-only codec benchmark over an S3 corpus (matrix codec×resolution×clip×repeat); posts results to ingest /benchmark-runs; machine label from IMDS. Storage gains List.
+
+## [Unreleased] 2026-06-10
+### Added
 - `make image-push-multiarch` — builds and pushes a multi-arch (amd64+arm64) `vod-transcode` image to ECR (override `PLATFORMS`/`IMAGE_TAG`/`AWS_REGION`/`ECR_REPO`). Enables Graviton benchmark runs while keeping the amd64 Fargate path on the same tag.
 
 ## [Unreleased] 2026-06-09

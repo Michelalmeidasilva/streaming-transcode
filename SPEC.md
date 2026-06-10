@@ -5,6 +5,11 @@ Go + FFmpeg + shaka-packager. Consumes RabbitMQ, never exposes HTTP.
 
 ## Trigger / Invocation Modes
 
+Three entrypoints share the same Docker image (`vod-transcode`). The active binary is
+selected by the container `command`:
+
+- **`cmd/benchmark` (on-demand harness):** see [Benchmark Binary](#benchmark-binary) below.
+
 Two entrypoints drive the **same** pipeline (`worker.Processor.Process`):
 
 - **`cmd/worker` (dev / RabbitMQ):** consumes `video.upload.completed` from
@@ -58,6 +63,55 @@ jobs whose output was complete and serving.)
 Packaged HLS/DASH output (many small segments per rendition) is uploaded to
 object storage with bounded parallelism (`maxUploadConcurrency = 8`); the first
 upload error cancels the remaining in-flight uploads and fails the job.
+
+## Benchmark Binary
+
+`cmd/benchmark` is an **encode-only** harness that measures ffmpeg performance across
+a codec×resolution matrix over an S3 corpus. It is carried in the same `vod-transcode`
+Docker image and selected by setting the container command to `benchmark`.
+
+### Isolation
+
+The benchmark binary runs **only** `TranscodeRendition` — no packaging, no upload to
+`transcoded/`, no catalog write, no PATCH to upload-state. Benchmark run documents are
+written to a dedicated `transcode_runs` `benchmark=true` partition in `streaming-ingest`
+and never affect the video catalog or the production transcode path.
+
+### Matrix
+
+The harness iterates: `codec × resolution × clip × repeat` **serially** (one encode at a
+time). Per measurement: wall-clock elapsed seconds, avg/max CPU %, output bitrate kbps.
+Each measurement is POSTed individually to `INGEST_BENCHMARK_URL` (`POST
+/api/v1/benchmark-runs`).
+
+### Machine Label
+
+The machine label that tags every run is resolved in order:
+1. `BENCHMARK_MACHINE_LABEL` env var (explicit override).
+2. IMDSv2 `http://169.254.169.254/latest/meta-data/instance-type` (EC2 instance type).
+3. `os.Hostname()` fallback.
+
+### Storage — `ObjectStorage.List`
+
+`cmd/benchmark` relies on a `List(ctx, bucket, prefix)` method added to the
+`ObjectStorage` port. When `BENCHMARK_CLIPS` is not set, the harness calls `List` to
+enumerate all objects under `BENCHMARK_CORPUS_PREFIX` and derives the clip set
+automatically. Both `MinIOStorage` and `S3Storage` implement `List`.
+
+### Env
+
+| Variable | Default | Description |
+|---|---|---|
+| `BENCHMARK_CORPUS_BUCKET` | `STORAGE_BUCKET` | Bucket holding the corpus clips |
+| `BENCHMARK_CORPUS_PREFIX` | — | Key prefix to list (e.g. `benchmark/corpus/`) |
+| `BENCHMARK_CODECS` | — | Comma-separated codec IDs (e.g. `h264,av1`) |
+| `BENCHMARK_RESOLUTIONS` | — | Comma-separated `WxH:bitrateKbps` pairs (e.g. `1280x720:2800,1920x1080:5000`) |
+| `BENCHMARK_REPEATS` | `3` | Number of encode repetitions per cell |
+| `BENCHMARK_CLIPS` | — | Optional explicit comma-separated S3 keys; overrides corpus listing |
+| `BENCHMARK_MACHINE_LABEL` | — | Override machine label (skips IMDS, falls back to hostname) |
+| `INGEST_BENCHMARK_URL` | **required** | Full URL for `POST /api/v1/benchmark-runs` |
+
+All storage env vars from the [Env](#env) section apply (provider selection, credentials).
 
 ## Bitrate Ladder
 
