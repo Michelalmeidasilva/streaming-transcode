@@ -106,6 +106,32 @@ No `/metrics` endpoint. No OTel push pipeline. See `docs/cloudwatch-emf-telemetr
 Backend selected at runtime via `STORAGE_PROVIDER` (`minio` | `aws-s3`).
 `storage.New(cfg.Storage)` dispatches to `NewMinIOStorage` or `NewS3Storage`.
 
+## Observability — JobObservability
+
+Each completed job emits a `JobObservability` struct (populated by `worker.Processor`) that is
+serialised into the `transcode.completed` event payload published to `POST /api/v1/events` on
+the Event Gateway. Fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `MachineLabel` | string | Value of `TRANSCODE_MACHINE_LABEL` (falls back to `os.Hostname()`). Human-readable tag identifying the EC2 instance type or environment used for this run. |
+| `Hostname` | string | `os.Hostname()` — the actual container/instance hostname. |
+| `CpuCores` | int | `runtime.NumCPU()` |
+| `Profile` | string | Rendition profile identifier |
+| `ElapsedSeconds` | float64 | Wall-clock seconds for the full transcode job |
+| `RTF` | float64 | Real-time factor (elapsed / source duration) |
+| `SourceFileSizeBytes` | int64 | Size of the raw source file |
+| `TotalOutputSizeBytes` | int64 | Sum of all output segment sizes |
+| `Renditions` | array | Per-rendition metrics (see below) |
+
+Each rendition entry includes: `name`, `codec`, `width`, `height`, `preset`,
+`targetBitrateKbps`, `outputBitrateKbps`, `elapsedSeconds`, `avgCpuPercent`,
+`maxCpuPercent`, `avgMemoryMb`, `maxMemoryMb`.
+
+The top-level `transcode.completed` event payload carries `machineLabel` as a
+first-class field (mirroring `JobObservability.MachineLabel`) so the Event Gateway
+can index it directly without deserialising the full observability struct.
+
 ## Env
 
 ```
@@ -123,4 +149,5 @@ TRANSCODE_JOB_TIMEOUT_SECONDS  10800
 TRANSCODE_MAX_HEIGHT     0    (0 = uncapped)
 TRANSCODE_CODECS         h264
 INGEST_BASE_URL          http://streaming-ingest:8080/api/v1
+TRANSCODE_MACHINE_LABEL  (optional) Human-readable label for the worker host (EC2 instance type or env name). Falls back to os.Hostname() when unset.
 ```

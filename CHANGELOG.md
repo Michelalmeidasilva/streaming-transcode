@@ -2,6 +2,10 @@
 
 ## [Unreleased] 2026-06-09
 ### Added
+- TRANSCODE_MACHINE_LABEL env var; jobs now tag observability and the transcode.completed event with a machine label for benchmark runs (falls back to hostname).
+
+## [Unreleased] 2026-06-09
+### Added
 - Guard de upscaling: `ResolveRenditions` descarta renditions acima da altura da fonte; fallback de 1 rendition por codec na altura da fonte. Mantém retrocompat: evento sem `transcode` usa os defaults.
 
 ## [Unreleased] 2026-06-08 — worker: lifecycle event publish is best-effort (não falha o job)
