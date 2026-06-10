@@ -29,6 +29,10 @@ func (s *concurrencyProbeStorage) Exists(context.Context, string, string) (bool,
 	return false, nil
 }
 
+func (s *concurrencyProbeStorage) List(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 func (s *concurrencyProbeStorage) UploadFile(_ context.Context, _, _, _ string) error {
 	s.mu.Lock()
 	s.inFlight++
@@ -86,6 +90,7 @@ type errOnNthStorage struct {
 
 func (s *errOnNthStorage) Download(context.Context, string, string, string) error { return nil }
 func (s *errOnNthStorage) Exists(context.Context, string, string) (bool, error)   { return false, nil }
+func (s *errOnNthStorage) List(_ context.Context, _, _ string) ([]string, error)  { return nil, nil }
 func (s *errOnNthStorage) UploadFile(context.Context, string, string, string) error {
 	s.mu.Lock()
 	s.count++

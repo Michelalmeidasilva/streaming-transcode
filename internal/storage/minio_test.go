@@ -29,6 +29,12 @@ func (f *fakeMinioClient) StatObject(_ context.Context, _, _ string, _ minio.Sta
 	return f.statInfo, f.statErr
 }
 
+func (f *fakeMinioClient) ListObjects(_ context.Context, _ string, _ minio.ListObjectsOptions) <-chan minio.ObjectInfo {
+	ch := make(chan minio.ObjectInfo)
+	close(ch)
+	return ch
+}
+
 func TestNewMinIOStorageAndContentTypes(t *testing.T) {
 	store, err := NewMinIOStorage(config.StorageConfig{
 		Endpoint:  "localhost:9000",
@@ -44,12 +50,12 @@ func TestNewMinIOStorageAndContentTypes(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		"master.m3u8": "application/vnd.apple.mpegurl",
+		"master.m3u8":  "application/vnd.apple.mpegurl",
 		"manifest.mpd": "application/dash+xml",
-		"segment.m4s": "video/iso.segment",
-		"video.mp4": "video/mp4",
-		"data.json": "application/json",
-		"file.bin": "application/octet-stream",
+		"segment.m4s":  "video/iso.segment",
+		"video.mp4":    "video/mp4",
+		"data.json":    "application/json",
+		"file.bin":     "application/octet-stream",
 	}
 	for path, want := range cases {
 		if got := contentTypeFor(path); got != want {

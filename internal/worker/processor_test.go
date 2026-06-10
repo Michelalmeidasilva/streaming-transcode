@@ -54,6 +54,8 @@ func (s *fakeStorage) Exists(_ context.Context, _, key string) (bool, error) {
 	return s.existsMap[key], nil
 }
 
+func (s *fakeStorage) List(_ context.Context, _, _ string) ([]string, error) { return nil, nil }
+
 type fakeRunner struct {
 	info           domain.MediaInfo
 	probeErr       error

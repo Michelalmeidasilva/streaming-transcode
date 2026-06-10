@@ -17,12 +17,14 @@ type ObjectStorage interface {
 	Download(ctx context.Context, bucket, key, destination string) error
 	UploadFile(ctx context.Context, bucket, key, source string) error
 	Exists(ctx context.Context, bucket, key string) (bool, error)
+	List(ctx context.Context, bucket, prefix string) ([]string, error)
 }
 
 type minioClient interface {
 	FGetObject(ctx context.Context, bucketName, objectName, filePath string, opts minio.GetObjectOptions) error
 	FPutObject(ctx context.Context, bucketName, objectName, filePath string, opts minio.PutObjectOptions) (minio.UploadInfo, error)
 	StatObject(ctx context.Context, bucketName, objectName string, opts minio.StatObjectOptions) (minio.ObjectInfo, error)
+	ListObjects(ctx context.Context, bucketName string, opts minio.ListObjectsOptions) <-chan minio.ObjectInfo
 }
 
 type MinIOStorage struct {
@@ -66,6 +68,21 @@ func (s *MinIOStorage) Exists(ctx context.Context, bucket, key string) (bool, er
 		return false, nil
 	}
 	return false, err
+}
+
+// List returns the object keys under prefix in bucket (recursive).
+func (s *MinIOStorage) List(ctx context.Context, bucket, prefix string) ([]string, error) {
+	var keys []string
+	for obj := range s.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if obj.Err != nil {
+			return nil, obj.Err
+		}
+		if strings.HasSuffix(obj.Key, "/") {
+			continue
+		}
+		keys = append(keys, obj.Key)
+	}
+	return keys, nil
 }
 
 func contentTypeFor(path string) string {
