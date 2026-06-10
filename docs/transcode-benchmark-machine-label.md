@@ -61,17 +61,18 @@ The worker populates `JobObservability.MachineLabel` with the resolved label (en
 
 `machineLabel` is duplicated as a top-level field so the Event Gateway can index it directly without deserialising the full observability struct.
 
-## Benchmark Workflow
+## Scope of this feature
 
-This feature is designed for a specific manual workflow:
+`TRANSCODE_MACHINE_LABEL` only **tags** every transcode job (Batch/Fargate and dev
+worker) with a machine label on the `transcode.completed` event, so production runs
+recorded in `transcode_runs` carry the host they ran on.
 
-1. Bring up a specific EC2 instance type via `terraform apply` with `enable_transcode_benchmark=true` and `benchmark_instance_type=<type>` (see `infra/docs/transcode-ec2-benchmark.md`).
-2. Upload ONE video through the normal upload UI (`streaming-platform-upload`).
-3. Wait for the transcode job to complete.
-4. Read the Metrics tab in the upload platform to see the run result for that machine.
-5. Change `benchmark_instance_type` in `terraform.tfvars`, re-apply, upload another video, repeat.
-
-Each run is stored separately in MongoDB keyed by `jobId`, so results from different machine types accumulate and can be compared side by side.
+Dedicated **codec benchmarking across EC2 instance types** is a separate, isolated
+harness — it does NOT go through the production upload/transcode path. Use the
+corpus-driven `cmd/benchmark` binary and the `transcode-benchmark-harness` Terraform
+module instead (`docs/codec-benchmark-harness.md` and
+`infra/docs/transcode-benchmark-harness.md`). That harness sets its own machine
+label from EC2 IMDS (instance type) and posts to `POST /api/v1/benchmark-runs`.
 
 ## Caveats
 
