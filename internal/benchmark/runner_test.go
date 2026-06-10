@@ -15,7 +15,18 @@ func (f *fakeStorage) Download(_ context.Context, _, _, dest string) error {
 	return os.WriteFile(dest, []byte("x"), 0o644)
 }
 
-type fakeRunner struct{ calls int }
+type fakeRunner struct {
+	calls      int
+	probeCalls int
+}
+
+func (f *fakeRunner) Probe(_ string) (domain.MediaInfo, error) {
+	f.probeCalls++
+	return domain.MediaInfo{
+		Width: 1920, Height: 1080, DurationSeconds: 31.5, FPS: 30,
+		VideoCodec: "vp9", BitrateKbps: 4200, SizeBytes: 1234,
+	}, nil
+}
 
 func (f *fakeRunner) TranscodeRendition(_ context.Context, _ string, _ *domain.RawVideoParams, r domain.Rendition, _ string) (domain.RenditionMetrics, error) {
 	f.calls++
@@ -71,5 +82,31 @@ func TestRunListsCorpusWhenNoClips(t *testing.T) {
 	}
 	if len(sink.posted) != 1 || sink.posted[0].Clip != "benchmark/corpus/x.mp4" {
 		t.Fatalf("expected 1 posted job for listed clip, got %#v", sink.posted)
+	}
+}
+
+func TestRunPopulatesSourceFromProbe(t *testing.T) {
+	storage := &fakeStorage{}
+	runner := &fakeRunner{}
+	sink := &fakeSink{}
+	cfg := Config{
+		CorpusBucket: "b", Clips: []string{"a.mp4"},
+		Codecs: []string{"h264", "av1"}, Resolutions: []Resolution{{1280, 720, 3000}},
+		Repeats: 1, MachineLabel: "c5.xlarge",
+	}
+	deps := Deps{Storage: storage, Runner: runner, Sink: sink, WorkDir: t.TempDir()}
+	if err := Run(context.Background(), cfg, deps); err != nil {
+		t.Fatal(err)
+	}
+	if runner.probeCalls != 1 {
+		t.Fatalf("want 1 probe (cached per clip), got %d", runner.probeCalls)
+	}
+	if len(sink.posted) != 2 {
+		t.Fatalf("want 2 posts, got %d", len(sink.posted))
+	}
+	r := sink.posted[0]
+	if r.SourceWidth != 1920 || r.SourceHeight != 1080 || r.SourceDurationSeconds != 31.5 ||
+		r.SourceFPS != 30 || r.SourceCodec != "vp9" || r.SourceBitrateKbps != 4200 || r.SourceFileSizeBytes != 1234 {
+		t.Fatalf("source fields not populated: %#v", r)
 	}
 }

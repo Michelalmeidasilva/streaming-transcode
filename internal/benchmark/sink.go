@@ -28,15 +28,22 @@ type ResultRendition struct {
 
 // Result is one benchmark measurement, matching the ingest Run JSON shape.
 type Result struct {
-	Benchmark      bool              `json:"benchmark"`
-	MachineLabel   string            `json:"machineLabel"`
-	Hostname       string            `json:"hostname"`
-	CPUCores       int               `json:"cpuCores"`
-	Clip           string            `json:"clip"`
-	Repetition     int               `json:"repetition"`
-	ElapsedSeconds float64           `json:"elapsedSeconds"`
-	Renditions     []ResultRendition `json:"renditions"`
-	CompletedAt    string            `json:"completedAt"`
+	Benchmark             bool              `json:"benchmark"`
+	MachineLabel          string            `json:"machineLabel"`
+	Hostname              string            `json:"hostname"`
+	CPUCores              int               `json:"cpuCores"`
+	SourceWidth           int               `json:"sourceWidth"`
+	SourceHeight          int               `json:"sourceHeight"`
+	SourceDurationSeconds float64           `json:"sourceDurationSeconds"`
+	SourceFPS             float64           `json:"sourceFps"`
+	SourceCodec           string            `json:"sourceCodec"`
+	SourceBitrateKbps     int64             `json:"sourceBitrateKbps"`
+	SourceFileSizeBytes   int64             `json:"sourceFileSizeBytes"`
+	Clip                  string            `json:"clip"`
+	Repetition            int               `json:"repetition"`
+	ElapsedSeconds        float64           `json:"elapsedSeconds"`
+	Renditions            []ResultRendition `json:"renditions"`
+	CompletedAt           string            `json:"completedAt"`
 }
 
 // ResultSink persists a single benchmark measurement.

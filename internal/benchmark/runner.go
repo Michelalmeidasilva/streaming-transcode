@@ -13,6 +13,7 @@ import (
 
 // Transcoder is the encode surface the runner needs (transcode.Runner satisfies it).
 type Transcoder interface {
+	Probe(source string) (domain.MediaInfo, error)
 	TranscodeRendition(ctx context.Context, source string, raw *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
 }
 
@@ -59,6 +60,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 
 	hostname, _ := os.Hostname()
 	downloaded := map[string]string{}
+	probed := map[string]domain.MediaInfo{}
 	var failures int
 
 	for _, job := range ExpandMatrix(cfg) {
@@ -71,6 +73,12 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 				continue
 			}
 			downloaded[job.Clip] = localClip
+			info, perr := deps.Runner.Probe(localClip)
+			if perr != nil {
+				logf("probe %s failed (continuing without source info): %v", job.Clip, perr)
+				info = domain.MediaInfo{}
+			}
+			probed[job.Clip] = info
 		}
 
 		out := filepath.Join(deps.WorkDir, fmt.Sprintf("out-%s-%dx%d-r%d.mp4", job.Codec, job.Resolution.Width, job.Resolution.Height, job.Repetition))
@@ -90,14 +98,21 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 		}
 
 		res := Result{
-			Benchmark:      true,
-			MachineLabel:   cfg.MachineLabel,
-			Hostname:       hostname,
-			CPUCores:       runtime.NumCPU(),
-			Clip:           job.Clip,
-			Repetition:     job.Repetition,
-			ElapsedSeconds: metrics.ElapsedSeconds,
-			CompletedAt:    time.Now().UTC().Format(time.RFC3339),
+			Benchmark:             true,
+			MachineLabel:          cfg.MachineLabel,
+			Hostname:              hostname,
+			CPUCores:              runtime.NumCPU(),
+			SourceWidth:           probed[job.Clip].Width,
+			SourceHeight:          probed[job.Clip].Height,
+			SourceDurationSeconds: probed[job.Clip].DurationSeconds,
+			SourceFPS:             probed[job.Clip].FPS,
+			SourceCodec:           probed[job.Clip].VideoCodec,
+			SourceBitrateKbps:     probed[job.Clip].BitrateKbps,
+			SourceFileSizeBytes:   probed[job.Clip].SizeBytes,
+			Clip:                  job.Clip,
+			Repetition:            job.Repetition,
+			ElapsedSeconds:        metrics.ElapsedSeconds,
+			CompletedAt:           time.Now().UTC().Format(time.RFC3339),
 			Renditions: []ResultRendition{{
 				Name:              rendition.Name,
 				Codec:             job.Codec,
