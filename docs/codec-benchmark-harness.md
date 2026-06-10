@@ -85,6 +85,34 @@ All storage provider env vars (`STORAGE_PROVIDER`, `STORAGE_BUCKET`, `MINIO_ENDP
 | Ingest endpoint | `POST /api/v1/events`, `PATCH /upload-state/videos/:id` | `POST /api/v1/benchmark-runs` only |
 | Run documents | `benchmark=false` (production partition) | `benchmark=true` (benchmark partition) |
 
+## Source Characterization
+
+Before encoding each clip, the harness calls `transcode.Runner.Probe` to read the source
+video properties. The result is cached per clip key so that each corpus clip is probed
+exactly once, regardless of how many codec×resolution×repeat iterations reference it.
+
+Probe failure is **non-fatal**: if `ffprobe` cannot read a clip, all source fields are
+left at their zero values (`0` / `""`) and the matrix continues normally. A warning is
+logged with the clip key and the error.
+
+The following source fields are added to every run document posted to
+`POST /api/v1/benchmark-runs`:
+
+| Field (JSON) | Type | Description |
+|---|---|---|
+| `sourceWidth` | int | Width of the source clip in pixels |
+| `sourceHeight` | int | Height of the source clip in pixels |
+| `sourceDurationSeconds` | float64 | Duration of the source clip in seconds |
+| `sourceFps` | float64 | Frame rate of the source clip |
+| `sourceCodec` | string | Video codec of the source clip (e.g. `h264`, `vp9`, `hevc`) |
+| `sourceBitrateKbps` | int | Container bitrate of the source clip in kbps |
+| `sourceFileSizeBytes` | int64 | File size of the source clip in bytes |
+
+These fields allow the Benchmark view (`streaming-platform-upload` Metrics tab) to display
+**Video** (clip title with full S3 key in the tooltip) and **Source** (`{w}×{h} ·
+{duration}s · {codec}`) columns, and to key aggregations by `clip × codec × resolution`
+so results from different source clips are not blended together.
+
 ## ObjectStorage.List
 
 The `ObjectStorage` port gained a `List(ctx context.Context, bucket, prefix string)

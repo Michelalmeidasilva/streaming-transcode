@@ -84,6 +84,24 @@ time). Per measurement: wall-clock elapsed seconds, avg/max CPU %, output bitrat
 Each measurement is POSTed individually to `INGEST_BENCHMARK_URL` (`POST
 /api/v1/benchmark-runs`).
 
+### Source Characterization
+
+Before encoding each clip, the harness runs `transcode.Runner.Probe` to read the source
+video properties. Results are cached per clip so each clip is probed exactly once across
+all codec×resolution×repeat iterations. Probe failure is **non-fatal**: source fields are
+left at zero and the matrix run continues. The following source fields are included on
+every posted run document:
+
+| Field | Type | Description |
+|---|---|---|
+| `sourceWidth` | int | Source video width in pixels |
+| `sourceHeight` | int | Source video height in pixels |
+| `sourceDurationSeconds` | float64 | Source clip duration in seconds |
+| `sourceFps` | float64 | Source frame rate |
+| `sourceCodec` | string | Source video codec (e.g. `h264`, `vp9`) |
+| `sourceBitrateKbps` | int | Source container bitrate in kbps |
+| `sourceFileSizeBytes` | int64 | Source file size in bytes |
+
 ### Machine Label
 
 The machine label that tags every run is resolved in order:
