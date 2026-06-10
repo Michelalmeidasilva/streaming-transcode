@@ -5,6 +5,7 @@
         benchmark-all \
         pipeline-reference \
         docker-run docker-run-av1 docker-run-h264 \
+        image-push-multiarch \
         reports clean
 
 # ─── defaults ────────────────────────────────────────────────────────────────
@@ -17,6 +18,13 @@ PRESET        ?= fast
 REPORT_DIR    ?= relatorios
 OUTPUT_DIR    ?= outputs/benchmark
 RUNTIME       ?= auto          # auto | docker | local
+
+# ─── ECR / imagem multi-arch ──────────────────────────────────────────────────
+AWS_REGION    ?= us-east-2
+ECR_REPO      ?= vod-transcode
+IMAGE_TAG     ?= latest
+# arm64-only: make image-push-multiarch PLATFORMS=linux/arm64 IMAGE_TAG=arm64
+PLATFORMS     ?= linux/amd64,linux/arm64
 
 BINARY_HOST   := dist/transcode-local-host
 BINARY_LINUX  := dist/transcode-local-linux-amd64
@@ -61,6 +69,10 @@ help:
 	@echo "  make docker-run       Transcodifica via Docker Compose (usa variáveis de ambiente)"
 	@echo "  make docker-run-av1   Atalho AV1 720p com o SAMPLE padrão"
 	@echo "  make docker-run-h264  Atalho H.264 720p com o SAMPLE padrão"
+	@echo ""
+	@echo "ECR — imagem multi-arch (benchmark Graviton/x86)"
+	@echo "  make image-push-multiarch                       Builda e publica $(ECR_REPO):$(IMAGE_TAG) ($(PLATFORMS))"
+	@echo "  make image-push-multiarch PLATFORMS=linux/arm64 IMAGE_TAG=arm64   Só arm64, tag dedicada"
 	@echo ""
 	@echo "RELATÓRIOS"
 	@echo "  make reports          Lista relatórios gerados em $(REPORT_DIR)/"
@@ -189,6 +201,23 @@ docker-run-h264: build-linux build-image
 	WIDTH=1280 HEIGHT=720 BITRATE_KBPS=3000 \
 	TRANSCODE_CODEC=h264 FFMPEG_PRESET=$(PRESET) \
 	docker compose -f compose.yaml run --rm transcode-local
+
+# ─── ECR: imagem multi-arch ───────────────────────────────────────────────────
+# Builda e publica a imagem do worker pra múltiplas arquiteturas no ECR.
+# Multi-arch "latest" preserva o caminho Fargate (amd64) e habilita Graviton (arm64).
+# Override: AWS_REGION, ECR_REPO, IMAGE_TAG, PLATFORMS.
+image-push-multiarch:
+	@set -e; \
+	command -v aws >/dev/null || { echo "aws CLI não encontrado"; exit 1; }; \
+	command -v docker >/dev/null || { echo "docker não encontrado"; exit 1; }; \
+	ECR_URI=$$(aws ecr describe-repositories --repository-names $(ECR_REPO) \
+	  --query 'repositories[0].repositoryUri' --output text --region $(AWS_REGION)); \
+	test -n "$$ECR_URI" || { echo "repositório ECR '$(ECR_REPO)' não encontrado em $(AWS_REGION)"; exit 1; }; \
+	echo "→ push $(PLATFORMS) para $$ECR_URI:$(IMAGE_TAG)"; \
+	aws ecr get-login-password --region $(AWS_REGION) \
+	  | docker login --username AWS --password-stdin "$${ECR_URI%%/*}"; \
+	docker buildx create --use --name vodbuilder >/dev/null 2>&1 || docker buildx use vodbuilder; \
+	docker buildx build --platform $(PLATFORMS) -t "$$ECR_URI:$(IMAGE_TAG)" --push .
 
 # ─── relatórios ──────────────────────────────────────────────────────────────
 reports:

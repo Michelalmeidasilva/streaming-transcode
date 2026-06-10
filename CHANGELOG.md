@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased] 2026-06-10
+### Added
+- `make image-push-multiarch` — builds and pushes a multi-arch (amd64+arm64) `vod-transcode` image to ECR (override `PLATFORMS`/`IMAGE_TAG`/`AWS_REGION`/`ECR_REPO`). Enables Graviton benchmark runs while keeping the amd64 Fargate path on the same tag.
+
 ## [Unreleased] 2026-06-09
 ### Added
 - TRANSCODE_MACHINE_LABEL env var; jobs now tag observability and the transcode.completed event with a machine label for benchmark runs (falls back to hostname).
