@@ -2,6 +2,11 @@
 
 ## [Unreleased] 2026-06-10
 ### Added
+- Honor upload-time `protocols` (gate HLS/DASH packaging) and `segmentSeconds` (ffmpeg `-hls_time` / `-seg_duration`, presets 2/4/6 s) on the transcode request; record the produced set into `playback.protocols`. `ResolveProtocols`/`ResolveSegmentSeconds`/`HasProtocol` added; idempotency probe picks HLS master or the MPD by what was requested. Per-rendition `bitrateKbps` (already honored) is now reachable end-to-end. See `docs/streaming-format-controls.md`.
+- Codec trace test pinning each UI codec (h264/h265/av1) to its ffmpeg encoder.
+
+## [Unreleased] 2026-06-10
+### Added
 - cmd/benchmark: encode-only codec benchmark over an S3 corpus (matrix codec×resolution×clip×repeat); posts results to ingest /benchmark-runs; machine label from IMDS. Storage gains List.
 
 ## [Unreleased] 2026-06-10

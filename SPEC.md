@@ -205,3 +205,22 @@ TRANSCODE_CODECS         h264
 INGEST_BASE_URL          http://streaming-ingest:8080/api/v1
 TRANSCODE_MACHINE_LABEL  (optional) Human-readable label for the worker host (EC2 instance type or env name). Falls back to os.Hostname() when unset.
 ```
+
+## Streaming Format Controls
+
+The `transcode` request carries, beyond codec/resolution:
+
+- `protocols` (`[]string`) — which of HLS/DASH to package. `ResolveProtocols` normalizes to a
+  deduplicated subset of `{hls,dash}`; empty falls back to **both** (legacy behavior). The
+  processor gates the HLS and DASH packaging blocks and their uploads on this set, and records
+  the produced set into `playback.protocols` on the `videos` record.
+- `segmentSeconds` (`int`) — `ResolveSegmentSeconds` accepts only `2/4/6`, else `6`. Wired to
+  ffmpeg `-hls_time` (HLS) and `-seg_duration -use_timeline 1 -use_template 1` (DASH).
+- `renditions[].bitrateKbps` — per-rendition target bitrate honored by `ResolveRenditions`;
+  blank/absent uses the default ladder.
+
+**GOP constraint:** the encoder keeps `-g 60` (2 s GOP at 30 fps); only segment presets that
+are multiples of the GOP (2/4/6 s) are offered so segments stay keyframe-aligned.
+
+**Limitation:** subtitles are advertised via the HLS master only — a DASH-only upload with
+sidecar subtitles will not surface them. See `docs/streaming-format-controls.md`.
