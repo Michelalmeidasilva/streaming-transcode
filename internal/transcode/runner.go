@@ -164,28 +164,40 @@ func av1CRF(rendition domain.Rendition) string {
 	}
 }
 
-func (r *Runner) PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string) error {
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return err
+// hlsArgs builds the ffmpeg argument list for packaging one rendition into an
+// fMP4 HLS media playlist. segmentSeconds controls -hls_time; non-positive
+// values fall back to the 6s default.
+func hlsArgs(renditionFile, outDir string, segmentSeconds int) []string {
+	if segmentSeconds <= 0 {
+		segmentSeconds = 6
 	}
-	args := []string{
+	return []string{
 		"-y",
 		"-i", renditionFile,
 		"-c", "copy",
 		"-f", "hls",
-		"-hls_time", "6",
+		"-hls_time", fmt.Sprintf("%d", segmentSeconds),
 		"-hls_playlist_type", "vod",
 		"-hls_segment_type", "fmp4",
 		"-hls_fmp4_init_filename", "init.mp4",
 		"-hls_segment_filename", filepath.Join(outDir, "segment-%05d.m4s"),
 		filepath.Join(outDir, "index.m3u8"),
 	}
-	return run(ctx, r.cfg.FFmpegPath, args...)
 }
 
-func (r *Runner) PackageDASH(ctx context.Context, renditionFiles []string, outDir string) error {
+func (r *Runner) PackageHLS(ctx context.Context, renditionFile string, renditionName string, outDir string, segmentSeconds int) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
+	}
+	return run(ctx, r.cfg.FFmpegPath, hlsArgs(renditionFile, outDir, segmentSeconds)...)
+}
+
+// dashArgs builds the ffmpeg argument list for packaging all renditions into a
+// single DASH manifest. segmentSeconds controls -seg_duration; non-positive
+// values fall back to the 6s default.
+func dashArgs(renditionFiles []string, outDir string, segmentSeconds int) []string {
+	if segmentSeconds <= 0 {
+		segmentSeconds = 6
 	}
 	args := []string{"-y"}
 	for _, file := range renditionFiles {
@@ -200,9 +212,19 @@ func (r *Runner) PackageDASH(ctx context.Context, renditionFiles []string, outDi
 	args = append(args,
 		"-c", "copy",
 		"-f", "dash",
+		"-seg_duration", fmt.Sprintf("%d", segmentSeconds),
+		"-use_timeline", "1",
+		"-use_template", "1",
 		filepath.Join(outDir, "manifest.mpd"),
 	)
-	return run(ctx, r.cfg.FFmpegPath, args...)
+	return args
+}
+
+func (r *Runner) PackageDASH(ctx context.Context, renditionFiles []string, outDir string, segmentSeconds int) error {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	return run(ctx, r.cfg.FFmpegPath, dashArgs(renditionFiles, outDir, segmentSeconds)...)
 }
 
 // WriteHLSMaster writes the HLS multivariant playlist. The audio codec

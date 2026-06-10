@@ -102,7 +102,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 	}
 
 	hlsDir := filepath.Join(tempDir, "hls")
-	if err := runner.PackageHLS(context.Background(), output, "720p", hlsDir); err != nil {
+	if err := runner.PackageHLS(context.Background(), output, "720p", hlsDir, 6); err != nil {
 		t.Fatalf("PackageHLS() error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
@@ -115,7 +115,7 @@ func TestRunnerTranscodeAndPackagingBuildArguments(t *testing.T) {
 	if err := os.WriteFile(second, []byte("data"), 0o644); err != nil {
 		t.Fatalf("WriteFile(second) error = %v", err)
 	}
-	if err := runner.PackageDASH(context.Background(), []string{output, second}, dashDir); err != nil {
+	if err := runner.PackageDASH(context.Background(), []string{output, second}, dashDir, 6); err != nil {
 		t.Fatalf("PackageDASH() error = %v", err)
 	}
 	args, _ = os.ReadFile(logPath)
