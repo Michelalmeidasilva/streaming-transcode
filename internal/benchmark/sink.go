@@ -12,18 +12,19 @@ import (
 
 // ResultRendition mirrors the ingest RunRendition JSON shape.
 type ResultRendition struct {
-	Name              string  `json:"name"`
-	Codec             string  `json:"codec"`
-	Width             int     `json:"width"`
-	Height            int     `json:"height"`
-	Preset            string  `json:"preset,omitempty"`
-	TargetBitrateKbps int     `json:"targetBitrateKbps"`
-	OutputBitrateKbps int64   `json:"outputBitrateKbps"`
-	ElapsedSeconds    float64 `json:"elapsedSeconds"`
-	AvgCPUPercent     float64 `json:"avgCpuPercent"`
-	MaxCPUPercent     float64 `json:"maxCpuPercent"`
-	AvgMemoryMB       float64 `json:"avgMemoryMb"`
-	MaxMemoryMB       float64 `json:"maxMemoryMb"`
+	Name                string  `json:"name"`
+	Codec               string  `json:"codec"`
+	Width               int     `json:"width"`
+	Height              int     `json:"height"`
+	Preset              string  `json:"preset,omitempty"`
+	TargetBitrateKbps   int     `json:"targetBitrateKbps"`
+	OutputBitrateKbps   int64   `json:"outputBitrateKbps"`
+	OutputFileSizeBytes int64   `json:"outputFileSizeBytes"`
+	ElapsedSeconds      float64 `json:"elapsedSeconds"`
+	AvgCPUPercent       float64 `json:"avgCpuPercent"`
+	MaxCPUPercent       float64 `json:"maxCpuPercent"`
+	AvgMemoryMB         float64 `json:"avgMemoryMb"`
+	MaxMemoryMB         float64 `json:"maxMemoryMb"`
 }
 
 // Result is one benchmark measurement, matching the ingest Run JSON shape.

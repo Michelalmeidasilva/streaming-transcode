@@ -31,9 +31,10 @@ func (f *fakeRunner) Probe(_ string) (domain.MediaInfo, error) {
 func (f *fakeRunner) TranscodeRendition(_ context.Context, _ string, _ *domain.RawVideoParams, r domain.Rendition, _ string) (domain.RenditionMetrics, error) {
 	f.calls++
 	return domain.RenditionMetrics{
-		ElapsedSeconds:    10,
-		OutputBitrateKbps: int64(r.BitrateKbps - 50),
-		ResourceUsage:     domain.ResourceUsage{AvgCPUPercent: 150, MaxCPUPercent: 300},
+		ElapsedSeconds:      10,
+		OutputBitrateKbps:   int64(r.BitrateKbps - 50),
+		OutputFileSizeBytes: 2_000_000,
+		ResourceUsage:       domain.ResourceUsage{AvgCPUPercent: 150, MaxCPUPercent: 300},
 	}, nil
 }
 
@@ -108,5 +109,22 @@ func TestRunPopulatesSourceFromProbe(t *testing.T) {
 	if r.SourceWidth != 1920 || r.SourceHeight != 1080 || r.SourceDurationSeconds != 31.5 ||
 		r.SourceFPS != 30 || r.SourceCodec != "vp9" || r.SourceBitrateKbps != 4200 || r.SourceFileSizeBytes != 1234 {
 		t.Fatalf("source fields not populated: %#v", r)
+	}
+}
+
+func TestRunRecordsOutputFileSize(t *testing.T) {
+	storage := &fakeStorage{}
+	runner := &fakeRunner{}
+	sink := &fakeSink{}
+	cfg := Config{
+		CorpusBucket: "b", Clips: []string{"a.mp4"},
+		Codecs: []string{"h264"}, Resolutions: []Resolution{{1280, 720, 3000}}, Repeats: 1,
+	}
+	deps := Deps{Storage: storage, Runner: runner, Sink: sink, WorkDir: t.TempDir()}
+	if err := Run(context.Background(), cfg, deps); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.posted) != 1 || sink.posted[0].Renditions[0].OutputFileSizeBytes != 2_000_000 {
+		t.Fatalf("output file size not recorded: %#v", sink.posted)
 	}
 }
