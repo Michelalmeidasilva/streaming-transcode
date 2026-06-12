@@ -80,7 +80,8 @@ and never affect the video catalog or the production transcode path.
 ### Matrix
 
 The harness iterates: `codec × resolution × clip × repeat` **serially** (one encode at a
-time). Per measurement: wall-clock elapsed seconds, avg/max CPU %, output bitrate kbps.
+time). Per measurement: wall-clock elapsed seconds, avg/max CPU %, output bitrate kbps,
+and encoded output file size bytes (`outputFileSizeBytes`).
 Each measurement is POSTed individually to `INGEST_BENCHMARK_URL` (`POST
 /api/v1/benchmark-runs`).
 
@@ -197,8 +198,8 @@ the Event Gateway. Fields:
 | `Renditions` | array | Per-rendition metrics (see below) |
 
 Each rendition entry includes: `name`, `codec`, `width`, `height`, `preset`,
-`targetBitrateKbps`, `outputBitrateKbps`, `elapsedSeconds`, `avgCpuPercent`,
-`maxCpuPercent`, `avgMemoryMb`, `maxMemoryMb`.
+`targetBitrateKbps`, `outputBitrateKbps`, `outputFileSizeBytes`, `elapsedSeconds`,
+`avgCpuPercent`, `maxCpuPercent`, `avgMemoryMb`, `maxMemoryMb`.
 
 The top-level `transcode.completed` event payload carries `machineLabel` as a
 first-class field (mirroring `JobObservability.MachineLabel`) so the Event Gateway

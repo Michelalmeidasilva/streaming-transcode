@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased] 2026-06-11
+### Added
+- Benchmark runs record the encoded output file size (outputFileSizeBytes) per rendition.
+
 ## [Unreleased] 2026-06-10
 ### Added
 - Benchmark probes each corpus clip (cached per clip) and records source width/height/duration/fps/codec/bitrate/size on every run; probe failure is non-fatal.

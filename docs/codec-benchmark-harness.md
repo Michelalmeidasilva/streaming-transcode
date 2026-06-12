@@ -46,7 +46,8 @@ for clip in clips:
 
 Only `TranscodeRendition` is called — **no packaging, no segment upload, no PATCH to
 upload-state, no catalog write**. Each cell produces exactly one run document in
-`streaming-ingest` tagged `benchmark=true`.
+`streaming-ingest` tagged `benchmark=true`. Per-rendition metrics include
+`outputFileSizeBytes` (int64) — the size of the encoded output file in bytes.
 
 ## Machine Label
 
@@ -112,6 +113,26 @@ These fields allow the Benchmark view (`streaming-platform-upload` Metrics tab) 
 **Video** (clip title with full S3 key in the tooltip) and **Source** (`{w}×{h} ·
 {duration}s · {codec}`) columns, and to key aggregations by `clip × codec × resolution`
 so results from different source clips are not blended together.
+
+## Rendition Fields
+
+Each rendition entry in a posted run document includes:
+
+| Field (JSON) | Type | Description |
+|---|---|---|
+| `name` | string | Rendition label, e.g. `720p` |
+| `codec` | string | Codec ID, e.g. `h264`, `av1` |
+| `width` | int | Output width in pixels |
+| `height` | int | Output height in pixels |
+| `preset` | string | ffmpeg preset, e.g. `fast` |
+| `targetBitrateKbps` | int | Target bitrate in kbps |
+| `outputBitrateKbps` | int | Measured output bitrate in kbps |
+| `outputFileSizeBytes` | int64 | Encoded output file size in bytes |
+| `elapsedSeconds` | float64 | Wall-clock encode time for this rendition |
+| `avgCpuPercent` | float64 | Average CPU utilisation during encoding |
+| `maxCpuPercent` | float64 | Peak CPU utilisation during encoding |
+| `avgMemoryMb` | float64 | Average RSS memory in MB |
+| `maxMemoryMb` | float64 | Peak RSS memory in MB |
 
 ## ObjectStorage.List
 
