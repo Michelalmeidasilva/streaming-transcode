@@ -74,7 +74,10 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 	if preset == "" {
 		preset = r.cfg.Preset
 	}
-	codec := encodingCodecSettings(rendition.Codec, preset)
+	codec, codecErr := encodingCodecSettings(rendition.Codec, preset, r.cfg.EncoderBackend)
+	if codecErr != nil {
+		return domain.RenditionMetrics{Status: "failed", StartedAt: startedAt, CompletedAt: time.Now().UTC(), ErrorMessage: codecErr.Error()}, codecErr
+	}
 	sourceInfo, err := r.probeSource(source, raw)
 	if err != nil {
 		return domain.RenditionMetrics{}, err
@@ -273,7 +276,17 @@ type codecSettings struct {
 	args    []string
 }
 
-func encodingCodecSettings(codec string, preset string) codecSettings {
+// encodingCodecSettings returns the ffmpeg encoder + args for a codec under the
+// chosen backend. "software" (default) uses libx264/libx265/libsvtav1/libvpx/libvvenc;
+// "nvenc" uses NVIDIA hardware encoders (h264/hevc/av1 only).
+func encodingCodecSettings(codec, preset, backend string) (codecSettings, error) {
+	if strings.EqualFold(strings.TrimSpace(backend), "nvenc") {
+		return nvencCodecSettings(codec)
+	}
+	return softwareCodecSettings(codec, preset), nil
+}
+
+func softwareCodecSettings(codec string, preset string) codecSettings {
 	switch normalizeCodec(codec) {
 	case "h265":
 		return codecSettings{
@@ -300,6 +313,20 @@ func encodingCodecSettings(codec string, preset string) codecSettings {
 			encoder: "libx264",
 			args:    []string{"-preset", preset, "-pix_fmt", "yuv420p"},
 		}
+	}
+}
+
+func nvencCodecSettings(codec string) (codecSettings, error) {
+	base := []string{"-preset", "p4", "-rc", "vbr", "-pix_fmt", "yuv420p"}
+	switch normalizeCodec(codec) {
+	case "h264":
+		return codecSettings{encoder: "h264_nvenc", args: base}, nil
+	case "h265":
+		return codecSettings{encoder: "hevc_nvenc", args: append(append([]string{}, base...), "-tag:v", "hvc1")}, nil
+	case "av1":
+		return codecSettings{encoder: "av1_nvenc", args: base}, nil
+	default:
+		return codecSettings{}, fmt.Errorf("codec %q is not supported by the nvenc backend (only h264, h265, av1)", codec)
 	}
 }
 

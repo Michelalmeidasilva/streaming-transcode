@@ -176,6 +176,26 @@ func TestResolveRenditionsFallsBackToSourceHeightPerCodec(t *testing.T) {
 	}
 }
 
+func TestEncodingCodecSettingsBackends(t *testing.T) {
+	sw, err := encodingCodecSettings("h265", "medium", "software")
+	if err != nil || sw.encoder != "libx265" {
+		t.Fatalf("software h265 = %q err=%v, want libx265", sw.encoder, err)
+	}
+	cases := map[string]string{"h264": "h264_nvenc", "h265": "hevc_nvenc", "av1": "av1_nvenc"}
+	for codec, want := range cases {
+		got, err := encodingCodecSettings(codec, "medium", "nvenc")
+		if err != nil || got.encoder != want {
+			t.Fatalf("nvenc %s = %q err=%v, want %s", codec, got.encoder, err, want)
+		}
+	}
+	if _, err := encodingCodecSettings("vp9", "medium", "nvenc"); err == nil {
+		t.Fatal("nvenc vp9 should error")
+	}
+	if _, err := encodingCodecSettings("vvc", "medium", "nvenc"); err == nil {
+		t.Fatal("nvenc vvc should error")
+	}
+}
+
 func TestCapRenditionsByHeight(t *testing.T) {
 	ladder := PlanProductionRenditionsForCodecs(
 		domain.MediaInfo{Width: 3840, Height: 2160},

@@ -16,7 +16,10 @@ func TestEncodingCodecSettingsPerUICodec(t *testing.T) {
 		"av1":  "libsvtav1",
 	}
 	for codec, encoder := range want {
-		got := encodingCodecSettings(codec, "medium")
+		got, err := encodingCodecSettings(codec, "medium", "software")
+		if err != nil {
+			t.Fatalf("software backend should not error for %q: %v", codec, err)
+		}
 		if got.encoder != encoder {
 			t.Fatalf("codec %q: encoder = %q, want %q", codec, got.encoder, encoder)
 		}

@@ -53,6 +53,9 @@ type TranscodeConfig struct {
 	// (e.g. an EC2 instance type like "c7g.xlarge"). Empty falls back to the
 	// hostname at the point the job observability is assembled.
 	MachineLabel string
+	// EncoderBackend selects the ffmpeg encoder family: "software" (libx264/libx265/
+	// libsvtav1, default) or "nvenc" (h264_nvenc/hevc_nvenc/av1_nvenc on NVIDIA GPUs).
+	EncoderBackend string
 }
 
 func FromEnv() Config {
@@ -100,6 +103,7 @@ func FromEnv() Config {
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
 			MachineLabel:       env("TRANSCODE_MACHINE_LABEL", ""),
+			EncoderBackend:     env("TRANSCODE_ENCODER_BACKEND", "software"),
 		},
 	}
 }

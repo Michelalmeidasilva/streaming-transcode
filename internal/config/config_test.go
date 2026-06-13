@@ -136,3 +136,13 @@ func TestFromEnvMachineLabel(t *testing.T) {
 		t.Fatalf("MachineLabel = %q, want c7g.xlarge", cfg.Transcode.MachineLabel)
 	}
 }
+
+func TestFromEnvEncoderBackend(t *testing.T) {
+	if got := FromEnv().Transcode.EncoderBackend; got != "software" {
+		t.Fatalf("default EncoderBackend = %q, want software", got)
+	}
+	t.Setenv("TRANSCODE_ENCODER_BACKEND", "nvenc")
+	if got := FromEnv().Transcode.EncoderBackend; got != "nvenc" {
+		t.Fatalf("EncoderBackend = %q, want nvenc", got)
+	}
+}
