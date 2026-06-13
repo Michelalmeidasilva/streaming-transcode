@@ -1,0 +1,32 @@
+# arm64 (Graviton + NVIDIA T4G) GPU benchmark image for g5g.
+# There is no common prebuilt arm64 ffmpeg+NVENC static build, so we compile
+# ffmpeg from source with --enable-nvenc on the arm64 CUDA (sbsa) base. T4G
+# (Turing) supports h264_nvenc/hevc_nvenc but NOT av1_nvenc.
+
+FROM golang:1.26-bookworm AS build
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/benchmark ./cmd/benchmark
+
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS ffbuild
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git build-essential yasm nasm pkg-config ca-certificates \
+      libx264-dev libx265-dev libnuma-dev && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 -b sdk/12.0 https://github.com/FFmpeg/nv-codec-headers.git /nvh \
+  && make -C /nvh install
+RUN git clone --depth 1 -b n7.0 https://github.com/FFmpeg/FFmpeg.git /ff \
+  && cd /ff \
+  && ./configure --enable-nonfree --enable-nvenc --enable-cuda \
+       --extra-cflags=-I/usr/local/cuda/include --extra-ldflags=-L/usr/local/cuda/lib64 \
+       --enable-gpl --enable-libx264 --enable-libx265 --prefix=/usr/local \
+  && make -j"$(nproc)" && make install
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libx264-163 libx265-199 libnuma1 && rm -rf /var/lib/apt/lists/*
+COPY --from=ffbuild /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffbuild /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+COPY --from=build /out/benchmark /usr/local/bin/benchmark
+ENV TRANSCODE_WORKDIR=/tmp/transcode FFMPEG_PATH=ffmpeg FFPROBE_PATH=ffprobe
+CMD ["benchmark"]
