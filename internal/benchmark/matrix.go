@@ -15,14 +15,16 @@ type Resolution struct {
 
 // Config is the fully-resolved benchmark request (one machine's matrix).
 type Config struct {
-	CorpusBucket string
-	CorpusPrefix string
-	Clips        []string // object keys under CorpusBucket; if empty, runner lists CorpusPrefix
-	Codecs       []string
-	Resolutions  []Resolution
-	Repeats      int
-	MachineLabel string
-	IngestURL    string // base, e.g. https://host/api/v1
+	CorpusBucket  string
+	CorpusPrefix  string
+	Clips         []string // object keys under CorpusBucket; if empty, runner lists CorpusPrefix
+	Codecs        []string
+	Resolutions   []Resolution
+	Repeats       int
+	MachineLabel  string
+	IngestURL     string           // base, e.g. https://host/api/v1
+	Mode          string           // "throughput" (default) or "rd"
+	QualityPoints map[string][]int // codec -> CRF/CQ values, used in rd mode
 }
 
 // Job is one measurement unit: a clip encoded with a codec at a resolution, once.
@@ -31,19 +33,30 @@ type Job struct {
 	Codec      string
 	Resolution Resolution
 	Repetition int
+	Quality    int // CRF/CQ value in rd mode; 0 = throughput (fixed bitrate)
 }
 
 // ExpandMatrix produces the ordered job list: clip → codec → resolution → repeat,
 // so repetitions of the same combination are adjacent (clean serial measurement).
+// In "rd" mode the quality dimension replaces fixed bitrate: for each codec the
+// QualityPoints values are swept and the job carries the CRF/CQ value in Quality.
 func ExpandMatrix(cfg Config) []Job {
 	repeats := cfg.Repeats
 	if repeats < 1 {
 		repeats = 1
 	}
-	jobs := make([]Job, 0, len(cfg.Clips)*len(cfg.Codecs)*len(cfg.Resolutions)*repeats)
+	jobs := []Job{}
 	for _, clip := range cfg.Clips {
 		for _, codec := range cfg.Codecs {
 			for _, res := range cfg.Resolutions {
+				if cfg.Mode == "rd" {
+					for _, q := range cfg.QualityPoints[codec] {
+						for rep := 1; rep <= repeats; rep++ {
+							jobs = append(jobs, Job{Clip: clip, Codec: codec, Resolution: res, Repetition: rep, Quality: q})
+						}
+					}
+					continue
+				}
 				for rep := 1; rep <= repeats; rep++ {
 					jobs = append(jobs, Job{Clip: clip, Codec: codec, Resolution: res, Repetition: rep})
 				}

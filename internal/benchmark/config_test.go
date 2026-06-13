@@ -33,3 +33,28 @@ func TestConfigFromEnvRequiresCodecsResolutionsURL(t *testing.T) {
 		t.Fatal("expected error when required envs are missing")
 	}
 }
+
+func TestConfigFromEnvRejectsInvalidMode(t *testing.T) {
+	env := map[string]string{
+		"BENCHMARK_CODECS":      "h264",
+		"BENCHMARK_RESOLUTIONS": "1920x1080:6000",
+		"INGEST_BENCHMARK_URL":  "https://host/api/v1",
+		"BENCHMARK_MODE":        "RD", // typo: not throughput|rd
+	}
+	if _, err := ConfigFromEnv(func(k string) string { return env[k] }); err == nil {
+		t.Fatal("expected error for invalid BENCHMARK_MODE")
+	}
+}
+
+func TestParseQualityPoints(t *testing.T) {
+	qp, err := parseQualityPoints("h264=19,25,31;av1=20,40,55")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(qp["h264"]) != 3 || qp["h264"][1] != 25 {
+		t.Fatalf("h264 points = %v", qp["h264"])
+	}
+	if len(qp["av1"]) != 3 || qp["av1"][2] != 55 {
+		t.Fatalf("av1 points = %v", qp["av1"])
+	}
+}

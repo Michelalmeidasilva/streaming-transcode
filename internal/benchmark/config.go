@@ -45,7 +45,53 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 	if cfg.IngestURL == "" {
 		return Config{}, fmt.Errorf("INGEST_BENCHMARK_URL is required")
 	}
+	cfg.Mode = strings.TrimSpace(getenv("BENCHMARK_MODE"))
+	if cfg.Mode == "" {
+		cfg.Mode = "throughput"
+	}
+	if cfg.Mode != "throughput" && cfg.Mode != "rd" {
+		return Config{}, fmt.Errorf("BENCHMARK_MODE %q is not valid (throughput|rd)", cfg.Mode)
+	}
+	if cfg.Mode == "rd" {
+		qpRaw := strings.TrimSpace(getenv("BENCHMARK_QUALITY_POINTS"))
+		if qpRaw == "" {
+			return Config{}, fmt.Errorf("BENCHMARK_QUALITY_POINTS is required when BENCHMARK_MODE=rd")
+		}
+		qp, err := parseQualityPoints(qpRaw)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.QualityPoints = qp
+	}
 	return cfg, nil
+}
+
+func parseQualityPoints(raw string) (map[string][]int, error) {
+	out := map[string][]int{}
+	for _, group := range strings.Split(raw, ";") {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		codec, list, ok := strings.Cut(group, "=")
+		if !ok {
+			return nil, fmt.Errorf("quality points %q must be codec=v1,v2,...", group)
+		}
+		vals := []int{}
+		for _, v := range strings.Split(list, ",") {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return nil, fmt.Errorf("quality point %q: %w", v, err)
+			}
+			vals = append(vals, n)
+		}
+		out[strings.TrimSpace(codec)] = vals
+	}
+	return out, nil
 }
 
 func splitCSV(raw string) []string {

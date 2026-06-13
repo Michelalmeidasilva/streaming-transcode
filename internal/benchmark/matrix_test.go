@@ -32,3 +32,34 @@ func TestParseResolutions(t *testing.T) {
 		t.Fatalf("bad parse: %#v", res)
 	}
 }
+
+func TestExpandMatrixRD(t *testing.T) {
+	cfg := Config{
+		Clips:         []string{"a.mp4"},
+		Codecs:        []string{"h264"},
+		Resolutions:   []Resolution{{Width: 1920, Height: 1080, BitrateKbps: 6000}},
+		Repeats:       1,
+		Mode:          "rd",
+		QualityPoints: map[string][]int{"h264": {19, 25, 31}},
+	}
+	jobs := ExpandMatrix(cfg)
+	if len(jobs) != 3 {
+		t.Fatalf("rd jobs = %d, want 3 (one per quality point)", len(jobs))
+	}
+	if jobs[0].Quality != 19 || jobs[2].Quality != 31 {
+		t.Fatalf("quality values = %d,%d", jobs[0].Quality, jobs[2].Quality)
+	}
+}
+
+func TestExpandMatrixThroughputUnaffected(t *testing.T) {
+	cfg := Config{
+		Clips:       []string{"a.mp4"},
+		Codecs:      []string{"h264"},
+		Resolutions: []Resolution{{Width: 1920, Height: 1080, BitrateKbps: 6000}},
+		Repeats:     2,
+	}
+	jobs := ExpandMatrix(cfg)
+	if len(jobs) != 2 || jobs[0].Quality != 0 {
+		t.Fatalf("throughput jobs = %d quality0=%d, want 2 jobs quality 0", len(jobs), jobs[0].Quality)
+	}
+}
