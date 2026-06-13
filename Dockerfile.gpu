@@ -1,0 +1,24 @@
+# Build the benchmark binary (pure Go, static).
+FROM golang:1.26-bookworm AS build
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/benchmark ./cmd/benchmark
+
+# Runtime: CUDA userspace + static ffmpeg with NVENC. We use BtbN's static GPL
+# build (compiled with --enable-nvenc), NOT the johnvansickle build — the latter
+# ships without NVENC, so its -encoders list has no *_nvenc entries. The static
+# ffmpeg dlopens libnvidia-encode at runtime, provided by the host driver via
+# `docker run --gpus all`.
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates xz-utils curl \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o /tmp/ffmpeg.tar.xz \
+  && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp \
+  && cp /tmp/ffmpeg-*-linux64-gpl/bin/ffmpeg /tmp/ffmpeg-*-linux64-gpl/bin/ffprobe /usr/local/bin/ \
+  && rm -rf /tmp/ffmpeg*
+COPY --from=build /out/benchmark /usr/local/bin/benchmark
+ENV TRANSCODE_WORKDIR=/tmp/transcode FFMPEG_PATH=ffmpeg FFPROBE_PATH=ffprobe
+CMD ["benchmark"]
