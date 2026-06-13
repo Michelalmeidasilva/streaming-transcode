@@ -15,6 +15,7 @@ import (
 type Transcoder interface {
 	Probe(source string) (domain.MediaInfo, error)
 	TranscodeRendition(ctx context.Context, source string, raw *domain.RawVideoParams, rendition domain.Rendition, output string) (domain.RenditionMetrics, error)
+	Quality(ctx context.Context, reference, distorted string, width, height int) (float64, float64, error)
 }
 
 // Storage is the corpus access the runner needs (storage.ObjectStorage satisfies it).
@@ -83,19 +84,31 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 
 		out := filepath.Join(deps.WorkDir, fmt.Sprintf("out-%s-%dx%d-r%d.mp4", job.Codec, job.Resolution.Width, job.Resolution.Height, job.Repetition))
 		rendition := domain.Rendition{
-			Name:        fmt.Sprintf("%s-%dp", job.Codec, job.Resolution.Height),
-			Width:       job.Resolution.Width,
-			Height:      job.Resolution.Height,
-			BitrateKbps: job.Resolution.BitrateKbps,
-			Codec:       job.Codec,
+			Name:         fmt.Sprintf("%s-%dp", job.Codec, job.Resolution.Height),
+			Width:        job.Resolution.Width,
+			Height:       job.Resolution.Height,
+			BitrateKbps:  job.Resolution.BitrateKbps,
+			Codec:        job.Codec,
+			QualityValue: job.Quality,
 		}
 		metrics, err := deps.Runner.TranscodeRendition(ctx, localClip, nil, rendition, out)
-		_ = os.Remove(out)
 		if err != nil {
+			_ = os.Remove(out)
 			logf("encode %s %s %dp rep%d failed: %v", job.Clip, job.Codec, job.Resolution.Height, job.Repetition, err)
 			failures++
 			continue
 		}
+		var vmaf, psnr float64
+		qualityParam := ""
+		if job.Quality > 0 {
+			qualityParam = fmt.Sprintf("q%d", job.Quality)
+			if v, p, qerr := deps.Runner.Quality(ctx, localClip, out, job.Resolution.Width, job.Resolution.Height); qerr != nil {
+				logf("vmaf %s %s q%d failed (continuing, score null): %v", job.Clip, job.Codec, job.Quality, qerr)
+			} else {
+				vmaf, psnr = v, p
+			}
+		}
+		_ = os.Remove(out)
 
 		res := Result{
 			Benchmark:             true,
@@ -121,6 +134,9 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 				TargetBitrateKbps:   job.Resolution.BitrateKbps,
 				OutputBitrateKbps:   metrics.OutputBitrateKbps,
 				OutputFileSizeBytes: metrics.OutputFileSizeBytes,
+				QualityParam:        qualityParam,
+				VMAF:                vmaf,
+				PSNR:                psnr,
 				ElapsedSeconds:      metrics.ElapsedSeconds,
 				AvgCPUPercent:       metrics.ResourceUsage.AvgCPUPercent,
 				MaxCPUPercent:       metrics.ResourceUsage.MaxCPUPercent,

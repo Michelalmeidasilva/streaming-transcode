@@ -20,6 +20,9 @@ type ResultRendition struct {
 	TargetBitrateKbps   int     `json:"targetBitrateKbps"`
 	OutputBitrateKbps   int64   `json:"outputBitrateKbps"`
 	OutputFileSizeBytes int64   `json:"outputFileSizeBytes"`
+	QualityParam        string  `json:"qualityParam,omitempty"`
+	VMAF                float64 `json:"vmaf,omitempty"`
+	PSNR                float64 `json:"psnr,omitempty"`
 	ElapsedSeconds      float64 `json:"elapsedSeconds"`
 	AvgCPUPercent       float64 `json:"avgCpuPercent"`
 	MaxCPUPercent       float64 `json:"maxCpuPercent"`

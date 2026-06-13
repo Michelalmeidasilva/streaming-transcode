@@ -18,6 +18,12 @@ func (f *fakeStorage) Download(_ context.Context, _, _, dest string) error {
 type fakeRunner struct {
 	calls      int
 	probeCalls int
+	vmaf       float64
+	psnr       float64
+}
+
+func (f *fakeRunner) Quality(_ context.Context, _, _ string, _, _ int) (float64, float64, error) {
+	return f.vmaf, f.psnr, nil
 }
 
 func (f *fakeRunner) Probe(_ string) (domain.MediaInfo, error) {
@@ -126,5 +132,28 @@ func TestRunRecordsOutputFileSize(t *testing.T) {
 	}
 	if len(sink.posted) != 1 || sink.posted[0].Renditions[0].OutputFileSizeBytes != 2_000_000 {
 		t.Fatalf("output file size not recorded: %#v", sink.posted)
+	}
+}
+
+func TestRunRDPopulatesQualityAndVMAF(t *testing.T) {
+	storage := &fakeStorage{}
+	runner := &fakeRunner{vmaf: 93.5, psnr: 41.0}
+	sink := &fakeSink{}
+	cfg := Config{
+		CorpusBucket: "b", Clips: []string{"c.mp4"},
+		Codecs: []string{"h264"}, Resolutions: []Resolution{{1920, 1080, 6000}},
+		Repeats: 1, Mode: "rd", QualityPoints: map[string][]int{"h264": {31}},
+		MachineLabel: "test",
+	}
+	deps := Deps{Storage: storage, Runner: runner, Sink: sink, WorkDir: t.TempDir()}
+	if err := Run(context.Background(), cfg, deps); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.posted) != 1 {
+		t.Fatalf("posts = %d, want 1", len(sink.posted))
+	}
+	rd := sink.posted[0].Renditions[0]
+	if rd.QualityParam != "q31" || rd.VMAF != 93.5 || rd.PSNR != 41.0 {
+		t.Fatalf("rendition = %+v", rd)
 	}
 }
