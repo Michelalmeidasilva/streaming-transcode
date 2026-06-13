@@ -42,7 +42,12 @@ type TranscodeConfig struct {
 	Codecs           []string
 	FFmpegPath       string
 	FFprobePath      string
-	Preset           string
+	// VMAFFFmpegPath is the ffmpeg used for the libvmaf quality measurement in the
+	// R-D benchmark. It can differ from FFmpegPath because the encode ffmpeg may
+	// lack libvmaf (the production apt build and the from-source NVENC build do).
+	// Defaults to FFmpegPath when VMAF_FFMPEG_PATH is unset.
+	VMAFFFmpegPath string
+	Preset         string
 	JobTimeout       time.Duration
 	MaxFileSizeBytes int64
 	// MaxRenditionHeight caps the output ladder to renditions no taller than this
@@ -98,6 +103,7 @@ func FromEnv() Config {
 			Codecs:             envList("TRANSCODE_CODECS", []string{"h264"}),
 			FFmpegPath:         env("FFMPEG_PATH", "ffmpeg"),
 			FFprobePath:        env("FFPROBE_PATH", "ffprobe"),
+			VMAFFFmpegPath:     env("VMAF_FFMPEG_PATH", env("FFMPEG_PATH", "ffmpeg")),
 			Preset:             env("FFMPEG_PRESET", "veryfast"),
 			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,

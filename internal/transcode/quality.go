@@ -54,7 +54,11 @@ func (r *Runner) Quality(ctx context.Context, reference, distorted string, width
 		"[0:v]settb=AVTB,setpts=PTS-STARTPTS[dist];[1:v]%s,settb=AVTB,setpts=PTS-STARTPTS[ref];[dist][ref]libvmaf=feature=name=psnr:log_fmt=json:log_path=%s",
 		scalePad, logName,
 	)
-	cmd := exec.CommandContext(ctx, r.cfg.FFmpegPath, "-i", distorted, "-i", reference, "-lavfi", filter, "-f", "null", "-")
+	vmafFFmpeg := r.cfg.VMAFFFmpegPath
+	if vmafFFmpeg == "" {
+		vmafFFmpeg = r.cfg.FFmpegPath
+	}
+	cmd := exec.CommandContext(ctx, vmafFFmpeg, "-i", distorted, "-i", reference, "-lavfi", filter, "-f", "null", "-")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return 0, 0, fmt.Errorf("libvmaf failed: %v: %s", err, truncate(string(out), 500))
 	}

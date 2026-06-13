@@ -146,3 +146,16 @@ func TestFromEnvEncoderBackend(t *testing.T) {
 		t.Fatalf("EncoderBackend = %q, want nvenc", got)
 	}
 }
+
+func TestFromEnvVMAFFFmpegPath(t *testing.T) {
+	// defaults to the encode ffmpeg path
+	t.Setenv("FFMPEG_PATH", "ffmpeg")
+	if got := FromEnv().Transcode.VMAFFFmpegPath; got != "ffmpeg" {
+		t.Fatalf("default VMAFFFmpegPath = %q, want ffmpeg (= FFMPEG_PATH)", got)
+	}
+	// explicit override wins (a separate libvmaf-capable binary)
+	t.Setenv("VMAF_FFMPEG_PATH", "ffmpeg-vmaf")
+	if got := FromEnv().Transcode.VMAFFFmpegPath; got != "ffmpeg-vmaf" {
+		t.Fatalf("VMAFFFmpegPath = %q, want ffmpeg-vmaf", got)
+	}
+}

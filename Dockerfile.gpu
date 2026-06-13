@@ -32,9 +32,18 @@ RUN git clone --depth 1 -b n7.1 https://github.com/FFmpeg/FFmpeg.git /ff \
 # Runtime: CUDA userspace; ffmpeg dlopens libnvidia-encode at run time, provided
 # by the host driver via `docker run --gpus all`.
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libx264-163 libx265-199 libnuma1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils libx264-163 libx265-199 libnuma1 && rm -rf /var/lib/apt/lists/*
 COPY --from=ffbuild /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffbuild /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 COPY --from=build /out/benchmark /usr/local/bin/benchmark
-ENV TRANSCODE_WORKDIR=/tmp/transcode FFMPEG_PATH=ffmpeg FFPROBE_PATH=ffprobe
+# The from-source ffmpeg has NVENC but no libvmaf (libvmaf-dev isn't apt-installable
+# on this base, and compiling it adds friction). For the R-D VMAF measurement we
+# drop in a static BtbN ffmpeg (libvmaf built in) as `ffmpeg-vmaf`; the NVENC
+# encode path keeps using the from-source `ffmpeg`. VMAF only decodes+compares, so
+# the static build's lack of av1_nvenc is irrelevant here.
+RUN curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz -o /tmp/ffv.tar.xz \
+  && tar -xJf /tmp/ffv.tar.xz -C /tmp --strip-components=2 --wildcards '*/bin/ffmpeg' \
+  && mv /tmp/ffmpeg /usr/local/bin/ffmpeg-vmaf \
+  && rm -f /tmp/ffv.tar.xz
+ENV TRANSCODE_WORKDIR=/tmp/transcode FFMPEG_PATH=ffmpeg FFPROBE_PATH=ffprobe VMAF_FFMPEG_PATH=ffmpeg-vmaf
 CMD ["benchmark"]
