@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased] 2026-06-13
+### Added
+- TRANSCODE_ENCODER_BACKEND=software|nvenc selects software vs NVIDIA NVENC encoders (h264_nvenc/hevc_nvenc/av1_nvenc); vp9/vvc unsupported under nvenc. New vod-transcode-gpu image (CUDA + static ffmpeg with NVENC) and Dockerfile.gpu.arm64 (compiled ffmpeg) for GPU benchmarking.
+
 ## [Unreleased] 2026-06-11
 ### Added
 - Benchmark runs record the encoded output file size (outputFileSizeBytes) per rendition.

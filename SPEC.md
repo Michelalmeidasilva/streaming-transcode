@@ -223,7 +223,57 @@ TRANSCODE_MAX_HEIGHT     0    (0 = uncapped)
 TRANSCODE_CODECS         h264
 INGEST_BASE_URL          http://streaming-ingest:8080/api/v1
 TRANSCODE_MACHINE_LABEL  (optional) Human-readable label for the worker host (EC2 instance type or env name). Falls back to os.Hostname() when unset.
+TRANSCODE_ENCODER_BACKEND  software (default) | nvenc — selects the ffmpeg encoder backend (see below).
 ```
+
+### Encoder Backend (`TRANSCODE_ENCODER_BACKEND`)
+
+Controls which ffmpeg encoders are used for each codec. Selection is in
+`internal/transcode/plan.go` (`encodingCodecSettings`); the config field is
+`TranscodeConfig.EncoderBackend` (`internal/config/config.go`).
+
+| Codec | `software` (default) | `nvenc` |
+|-------|----------------------|---------|
+| h264  | `libx264`            | `h264_nvenc` |
+| h265  | `libx265`            | `hevc_nvenc` + `-tag:v hvc1` |
+| av1   | `libsvtav1`          | `av1_nvenc` |
+| vp9   | `libvpx-vp9`         | **unsupported** — run logged failed |
+| vvc   | `libvvenc`           | **unsupported** — run logged failed |
+
+Under `nvenc`, base encoder args are `-preset p4 -rc vbr -pix_fmt yuv420p`. The unsupported
+vp9/vvc codecs return an error that is logged; the benchmark matrix continues with the
+remaining cells (the run is not aborted).
+
+The `software` default preserves all existing production behavior — no change is required
+for normal worker or Batch deployments. `nvenc` is intended for GPU benchmark runs only.
+
+## Images
+
+Two Docker images are published for the transcode service:
+
+### `vod-transcode` (CPU — default)
+
+Multi-arch (`amd64 + arm64`). Carries all three binaries (`worker`, `transcode-local`,
+`benchmark`) and uses `TRANSCODE_ENCODER_BACKEND=software` (the default). Used by AWS Batch
+Fargate (production), the RabbitMQ worker (dev), and CPU benchmark runs.
+
+### `vod-transcode-gpu` (NVIDIA NVENC — benchmark only)
+
+`amd64` only. Multi-stage build (`Dockerfile.gpu`):
+
+- **Build stage:** Go compiles the `benchmark` binary.
+- **Runtime stage:** `nvidia/cuda:12.4.1-runtime-ubuntu22.04` + BtbN static GPL ffmpeg
+  (compiled `--enable-nvenc`; intentionally **not** johnvansickle's build, which lacks NVENC).
+  `CMD ["benchmark"]` — encode-only; the worker and transcode-local binaries are not included.
+
+Verified: `ffmpeg -encoders` lists `h264_nvenc`, `hevc_nvenc`, and `av1_nvenc` in the image.
+
+`Dockerfile.gpu.arm64` provides an equivalent image for `arm64` GPU instances (e.g. g5g/T4G);
+it compiles ffmpeg from source because no prebuilt arm64 NVENC-enabled static binary is
+available. `av1_nvenc` is not available on T4G hardware.
+
+The GPU image is used exclusively by the benchmark harness (`benchmark_gpu=true`). It is
+stored in the `vod-transcode-gpu` ECR repository.
 
 ## Streaming Format Controls
 

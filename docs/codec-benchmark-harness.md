@@ -176,3 +176,66 @@ benchmark_image_tag     = "latest"   # multi-arch, or "arm64"
 
 If `benchmark_ami_arch` and the image architecture disagree, the container fails with
 `exec format error` — keep them consistent.
+
+## GPU (NVENC)
+
+### Images
+
+Two GPU images are provided:
+
+| Image | Dockerfile | Arch | Notes |
+|---|---|---|---|
+| `vod-transcode-gpu` | `Dockerfile.gpu` | `amd64` | BtbN static ffmpeg + NVENC; `h264_nvenc`, `hevc_nvenc`, `av1_nvenc` |
+| `vod-transcode-gpu` (arm64 tag) | `Dockerfile.gpu.arm64` | `arm64` | ffmpeg compiled from source; `h264_nvenc`, `hevc_nvenc` only (no `av1_nvenc` on T4G) |
+
+Both images contain only the `benchmark` binary (`CMD ["benchmark"]`). They are stored in
+the `vod-transcode-gpu` ECR repository.
+
+Build and push:
+
+```bash
+REG=151803906541.dkr.ecr.us-east-2.amazonaws.com
+REGION=us-east-2
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin "$REG"
+
+# amd64 GPU image (g4dn / g6 / g6e):
+docker build --platform linux/amd64 -f Dockerfile.gpu \
+  -t "$REG/vod-transcode-gpu:latest" . && docker push "$REG/vod-transcode-gpu:latest"
+
+# arm64 GPU image (g5g):
+docker build --platform linux/arm64 -f Dockerfile.gpu.arm64 \
+  -t "$REG/vod-transcode-gpu:arm64" . && docker push "$REG/vod-transcode-gpu:arm64"
+```
+
+### Encoder Backend
+
+The GPU images set `TRANSCODE_ENCODER_BACKEND=nvenc`, which routes each codec to its NVENC
+encoder. See the **Encoder Backend** section in `SPEC.md` for the full codec→encoder mapping.
+vp9 and vvc are unsupported under `nvenc` — affected runs are logged failed and the matrix
+continues.
+
+### Per-Device Codec Matrix
+
+| Device | GPU chip | Arch | Supported codecs |
+|---|---|---|---|
+| g4dn | T4 | x86_64 | `h264`, `h265` |
+| g5g | T4G | arm64 | `h264`, `h265` |
+| g6 | L4 | x86_64 | `h264`, `h265`, `av1` |
+| g6e | L40S | x86_64 | `h264`, `h265`, `av1` |
+
+`av1_nvenc` is only available on Ada Lovelace and newer (L4 / L40S). Do not include `av1`
+in `benchmark_codecs` for g4dn or g5g runs.
+
+CPU Graviton instances (c7g, c8g) run software codecs via the `vod-transcode` image
+(`TRANSCODE_ENCODER_BACKEND=software`); `h264`, `h265`, and `av1` are all supported.
+
+### Service Quota Prerequisite
+
+GPU instances require a **Service Quotas increase** before `terraform apply` can launch them:
+
+- x86_64 GPU (g4dn, g6, g6e): request **"Running On-Demand G and VT instances"** in the
+  EC2 console → Service Quotas. Minimum: 4 vCPUs (g4dn.xlarge / g6.xlarge).
+- arm64 GPU (g5g): request **"Running On-Demand G instances"** for arm64.
+
+Without the quota increase, `terraform apply` succeeds but the EC2 instance launch fails
+(`InsufficientInstanceCapacity` or quota error) and the benchmark never starts.
