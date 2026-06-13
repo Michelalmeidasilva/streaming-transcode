@@ -93,7 +93,10 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", rendition.Width, rendition.Height, rendition.Width, rendition.Height),
 		"-c:v", codec.encoder,
 	)
-	if normalizeCodec(rendition.Codec) == "av1" {
+	if rendition.QualityValue > 0 {
+		// R-D sweep: constant quality, bitrate floats.
+		args = append(args, constantQualityArgs(r.cfg.EncoderBackend, rendition.QualityValue)...)
+	} else if normalizeCodec(rendition.Codec) == "av1" {
 		args = append(args, "-b:v", "0", "-crf", av1CRF(rendition))
 	} else {
 		args = append(args,

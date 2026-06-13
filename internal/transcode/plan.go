@@ -2,6 +2,7 @@ package transcode
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"streaming-transcode/internal/domain"
@@ -222,6 +223,18 @@ func capRenditionsToSource(renditions []domain.Rendition, info domain.MediaInfo)
 		})
 	}
 	return kept
+}
+
+// constantQualityArgs returns the rate-control flags for a constant-quality
+// (R-D sweep) encode. software → libx264/libx265/libsvtav1 CRF; nvenc → NVIDIA
+// constrained-quality VBR (-cq with -b:v 0, paired with the encoder's base
+// "-rc vbr" set in nvencCodecSettings). The integer scales differ per encoder;
+// that is expected — BD-rate interpolates at equal quality.
+func constantQualityArgs(backend string, quality int) []string {
+	if strings.EqualFold(strings.TrimSpace(backend), "nvenc") {
+		return []string{"-b:v", "0", "-cq", strconv.Itoa(quality)}
+	}
+	return []string{"-crf", strconv.Itoa(quality)}
 }
 
 func normalizeCodecs(codecs []string) []string {

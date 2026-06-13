@@ -1,6 +1,7 @@
 package transcode
 
 import (
+	"strings"
 	"testing"
 
 	"streaming-transcode/internal/domain"
@@ -193,6 +194,17 @@ func TestEncodingCodecSettingsBackends(t *testing.T) {
 	}
 	if _, err := encodingCodecSettings("vvc", "medium", "nvenc"); err == nil {
 		t.Fatal("nvenc vvc should error")
+	}
+}
+
+func TestConstantQualityArgs(t *testing.T) {
+	sw := constantQualityArgs("software", 31)
+	if got := strings.Join(sw, " "); got != "-crf 31" {
+		t.Fatalf("software qual args = %q, want -crf 31", got)
+	}
+	nv := constantQualityArgs("nvenc", 35)
+	if got := strings.Join(nv, " "); got != "-b:v 0 -cq 35" {
+		t.Fatalf("nvenc qual args = %q, want -b:v 0 -cq 35", got)
 	}
 }
 

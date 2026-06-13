@@ -128,6 +128,7 @@ type Rendition struct {
 	BitrateKbps  int               `json:"bitrateKbps"`
 	Codec        string            `json:"codec"`
 	Preset       string            `json:"preset,omitempty"`
+	QualityValue int               `json:"qualityValue,omitempty"`
 	OutputPath   string            `json:"outputPath,omitempty"`
 	ManifestPath string            `json:"manifestPath,omitempty"`
 	Metrics      *RenditionMetrics `json:"metrics,omitempty"`
