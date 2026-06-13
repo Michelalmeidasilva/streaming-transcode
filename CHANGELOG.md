@@ -2,6 +2,10 @@
 
 ## [Unreleased] 2026-06-13
 ### Added
+- Benchmark R-D mode (BENCHMARK_MODE=rd): constant-quality CRF/CQ sweep + per-encode VMAF/PSNR (libvmaf) for rate-distortion / BD-rate codec-efficiency study. scripts/bdrate.py computes BD-rate vs the libx264 anchor.
+
+## [Unreleased] 2026-06-13
+### Added
 - TRANSCODE_ENCODER_BACKEND=software|nvenc selects software vs NVIDIA NVENC encoders (h264_nvenc/hevc_nvenc/av1_nvenc); vp9/vvc unsupported under nvenc. New vod-transcode-gpu image (CUDA + static ffmpeg with NVENC) and Dockerfile.gpu.arm64 (compiled ffmpeg) for GPU benchmarking.
 
 ## [Unreleased] 2026-06-11

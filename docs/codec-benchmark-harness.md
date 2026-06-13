@@ -140,6 +140,95 @@ The `ObjectStorage` port gained a `List(ctx context.Context, bucket, prefix stri
 ([]string, error)` method. Both `MinIOStorage` and `S3Storage` implement it. The benchmark
 harness uses it to build the clip set when `BENCHMARK_CLIPS` is not provided.
 
+## R-D / BD-Rate Mode
+
+### Overview
+
+Set `BENCHMARK_MODE=rd` (via `-var benchmark_mode=rd` in the harness) to switch from the default throughput study to a **rate-distortion efficiency study**. In this mode:
+
+- Bitrate is not fixed: the encoder runs at **constant quality** (CRF for software, CQ for NVENC).
+- Each encode is followed by a **VMAF + PSNR measurement** using ffmpeg's `libvmaf` filter.
+- The script `scripts/bdrate.py` computes **BD-rate** (Bjøntegaard) vs the libx264/c7i.xlarge software anchor.
+
+### Constant-Quality Args per Encoder
+
+| Backend | Codec | Quality control |
+|---|---|---|
+| software | libx264 | `-crf <N>` |
+| software | libsvtav1 | `-crf <N>` |
+| software | libx265 | `-crf <N>` |
+| nvenc | h264_nvenc / hevc_nvenc / av1_nvenc | `-rc vbr -b:v 0 -cq <N>` |
+
+Lower N = higher quality (larger output) in all cases.
+
+### VMAF Reference Alignment
+
+The VMAF reference is the **source video scaled and padded to the exact encode output geometry**, using the identical `scale+pad` filter chain the encode uses. This ensures frame-for-frame alignment — a mismatch here (e.g. using the raw source at source resolution) would produce artificially low or high VMAF scores.
+
+### Quality Points per Machine
+
+Software encoders (c5.xlarge, c7i.xlarge) — CRF sweep:
+```bash
+-var benchmark_mode=rd \
+-var 'benchmark_quality_points=h264=19,25,31,37,43;h265=19,25,31,37,43;av1=20,30,40,50,55'
+```
+
+NVENC encoders (g4dn, g5, g6, g6e) — CQ sweep:
+```bash
+-var benchmark_mode=rd \
+-var 'benchmark_quality_points=h264=18,24,30,36,42;h265=18,24,30,36,42;av1=20,28,36,44,52'
+```
+
+CRF and CQ values are encoder-specific and not numerically comparable across codecs. BD-rate handles the cross-codec comparison by interpolating VMAF vs bitrate curves at equal perceptual quality.
+
+### Running an R-D Benchmark (one machine at a time)
+
+Always pass `benchmark_machine_label` explicitly for GPU runs (IMDS is unreliable on the Deep Learning AMI):
+
+```bash
+# Software anchor (c7i.xlarge — the BD-rate reference):
+infra/bin/terraform -chdir=infra/aws apply -target=module.transcode_benchmark_harness \
+  -var enable_transcode_benchmark_harness=true \
+  -var benchmark_instance_type=c7i.xlarge \
+  -var benchmark_mode=rd \
+  -var 'benchmark_codecs=h264,h265,av1' \
+  -var 'benchmark_resolutions=854x480:0,1280x720:0,1920x1080:0' \
+  -var 'benchmark_quality_points=h264=19,25,31,37,43;h265=19,25,31,37,43;av1=20,30,40,50,55' \
+  -var benchmark_repeats=1
+
+# GPU (g6.xlarge — NVENC h264/h265/av1, Ada Lovelace L4):
+infra/bin/terraform -chdir=infra/aws apply -target=module.transcode_benchmark_harness \
+  -var enable_transcode_benchmark_harness=true \
+  -var benchmark_gpu=true \
+  -var benchmark_instance_type=g6.xlarge \
+  -var benchmark_machine_label=g6.xlarge \
+  -var benchmark_mode=rd \
+  -var 'benchmark_codecs=h264,h265,av1' \
+  -var 'benchmark_resolutions=854x480:0,1280x720:0,1920x1080:0' \
+  -var 'benchmark_quality_points=h264=18,24,30,36,42;h265=18,24,30,36,42;av1=20,28,36,44,52' \
+  -var benchmark_repeats=1
+```
+
+Note: in `rd` mode the `bitrateKbps` component of `BENCHMARK_RESOLUTIONS` is unused (set to `0`); bitrate is a measured output, not an input target.
+
+### BD-Rate Analysis
+
+After all machines complete, run `scripts/bdrate.py` to compute BD-rate vs the libx264/c7i.xlarge anchor and produce R-D curve plots:
+
+```bash
+python3 scripts/bdrate.py \
+  --ingest-url https://kg8jhai79k.execute-api.us-east-2.amazonaws.com/api/v1 \
+  --anchor h264 \
+  --anchor-machine c7i.xlarge \
+  --output-dir relatorios/rdcurves/
+```
+
+Output:
+- `bd_rate_summary.csv` — BD-rate % per `(codec, machine, resolution)`, averaged over clips with ≥ 4 quality points.
+- `rd_<codec>_<machine>_<resolution>.png` — VMAF (y) vs bitrate kbps (x) curves per machine overlaid.
+
+BD-rate interpretation: a BD-rate of `-15%` for `h265/c7i.xlarge` vs `h264/c7i.xlarge` at 720p means h265 achieves the same VMAF with 15% less bitrate. The trade-off framing: NVENC BD-rate penalty (positive, higher bitrate for same VMAF) vs the 2–12× speedup already measured in the throughput study.
+
 ## Workflow
 
 1. Upload representative clips to `s3://<bucket>/benchmark/corpus/` once.

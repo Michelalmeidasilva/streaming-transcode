@@ -117,6 +117,58 @@ The machine label that tags every run is resolved in order:
 enumerate all objects under `BENCHMARK_CORPUS_PREFIX` and derives the clip set
 automatically. Both `MinIOStorage` and `S3Storage` implement `List`.
 
+### Benchmark Modes
+
+`BENCHMARK_MODE` selects the measurement axis:
+
+| Mode | What is measured |
+|---|---|
+| `throughput` (default) | Wall-clock encode time, avg/max CPU %, output bitrate kbps per rendition. Each rendition is encoded at the **target bitrate** from `BENCHMARK_RESOLUTIONS`. |
+| `rd` | Rate-distortion efficiency. Each rendition is encoded at **constant quality** (CRF for software, CQ for NVENC) across a sweep of quality points. Output bitrate floats; VMAF + PSNR are measured after each encode. |
+
+#### R-D / Constant-Quality Path
+
+In `rd` mode the harness iterates quality points instead of a single target bitrate:
+
+```
+for clip in clips:
+  for codec in BENCHMARK_CODECS:
+    for resolution in BENCHMARK_RESOLUTIONS:
+      for qualityPoint in quality_points[codec]:
+        encode at constant quality → measure bitrate + VMAF + PSNR
+        POST /api/v1/benchmark-runs
+```
+
+Quality control args per encoder backend:
+- **software** (`libx264`, `libsvtav1`, …): `-crf <N>` — lower N = higher quality, lower bitrate.
+- **nvenc** (`h264_nvenc`, `hevc_nvenc`, `av1_nvenc`): `-rc vbr -b:v 0 -cq <N>` (`constantQualityArgs`) — lower N = higher quality.
+
+CRF and CQ values are encoder-specific and non-comparable across codecs; BD-rate handles the comparison by interpolating at equal VMAF. Quality points are configured per codec via `BENCHMARK_QUALITY_POINTS` (see Env below).
+
+The per-rendition result adds three fields:
+- **`qualityParam`** (`string`) — the quality parameter identifier, e.g. `q19`, `q25`.
+- **`vmaf`** (`float64`) — VMAF score (0–100) measured by ffmpeg's `libvmaf` filter against the scaled+padded source reference (same `scale+pad` filter chain as the encode, so frames align).
+- **`psnr`** (`float64`) — PSNR (dB) from the same libvmaf run as a cross-check metric.
+
+`domain.Rendition.QualityValue` drives the constant-quality encode. The `Quality()` method executes the libvmaf measurement. The reference is the source video scaled and padded to the encode's output geometry using the **identical** filter the encode uses — frame alignment is exact.
+
+`BENCHMARK_REPEATS` is ignored in `rd` mode (each quality point is one encode; the VMAF score is deterministic).
+
+#### BD-Rate Analysis (`scripts/bdrate.py`)
+
+After collecting R-D runs, `scripts/bdrate.py` computes the Bjøntegaard (BD-rate) metric:
+
+```bash
+python3 scripts/bdrate.py \
+  --ingest-url https://<ingest-api>/api/v1 \
+  --anchor h264 \
+  --machine-label g6.xlarge
+```
+
+- **BD-rate** = average % bitrate difference at equal VMAF vs the `libx264` anchor on `c7i.xlarge` (software reference). Negative BD-rate = same quality at less bitrate (better efficiency).
+- Computed per `(codec, resolution)` pair; averaged over clips with ≥ 4 quality points.
+- Also produces R-D curve plots (VMAF vs bitrate kbps) per `(machine, codec, resolution)`.
+
 ### Env
 
 | Variable | Default | Description |
@@ -124,10 +176,12 @@ automatically. Both `MinIOStorage` and `S3Storage` implement `List`.
 | `BENCHMARK_CORPUS_BUCKET` | `STORAGE_BUCKET` | Bucket holding the corpus clips |
 | `BENCHMARK_CORPUS_PREFIX` | — | Key prefix to list (e.g. `benchmark/corpus/`) |
 | `BENCHMARK_CODECS` | — | Comma-separated codec IDs (e.g. `h264,av1`) |
-| `BENCHMARK_RESOLUTIONS` | — | Comma-separated `WxH:bitrateKbps` pairs (e.g. `1280x720:2800,1920x1080:5000`) |
-| `BENCHMARK_REPEATS` | `3` | Number of encode repetitions per cell |
+| `BENCHMARK_RESOLUTIONS` | — | Comma-separated `WxH:bitrateKbps` pairs (e.g. `1280x720:2800,1920x1080:5000`). In `rd` mode the `bitrateKbps` field is unused (bitrate floats). |
+| `BENCHMARK_REPEATS` | `3` | Number of encode repetitions per cell (ignored in `rd` mode) |
 | `BENCHMARK_CLIPS` | — | Optional explicit comma-separated S3 keys; overrides corpus listing |
 | `BENCHMARK_MACHINE_LABEL` | — | Override machine label (skips IMDS, falls back to hostname) |
+| `BENCHMARK_MODE` | `throughput` | `throughput` or `rd` — selects the measurement axis |
+| `BENCHMARK_QUALITY_POINTS` | — | Per-codec CRF/CQ sweep (e.g. `h264=19,25,31,37,43;av1=20,30,40,50,55`). Required in `rd` mode. Software codecs use CRF; NVENC codecs use CQ. |
 | `INGEST_BENCHMARK_URL` | **required** | Full URL for `POST /api/v1/benchmark-runs` |
 
 All storage env vars from the [Env](#env) section apply (provider selection, credentials).
