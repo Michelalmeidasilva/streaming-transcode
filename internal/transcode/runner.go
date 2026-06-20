@@ -93,6 +93,19 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", rendition.Width, rendition.Height, rendition.Width, rendition.Height),
 		"-c:v", codec.encoder,
 	)
+	// Pin the GOP identically on every backend/codec so keyframe cadence matches
+	// (segments stay aligned to the 2/4/6 s presets) and benchmark machines are
+	// compared on the same keyframe structure. 0 = encoder default (no pinning).
+	if r.cfg.GOPSize > 0 {
+		args = append(args, "-g", strconv.Itoa(r.cfg.GOPSize), "-keyint_min", strconv.Itoa(r.cfg.GOPSize))
+		// Disable scene-cut so the GOP is exactly fixed (deterministic, comparable).
+		// Only libx264 exposes -sc_threshold safely here; on NVENC and the other
+		// software encoders the -g/-keyint_min cap is the portable lever (scene-cut
+		// disable per encoder, e.g. nvenc -no-scenecut, is a hardware-verified follow-up).
+		if !strings.EqualFold(strings.TrimSpace(r.cfg.EncoderBackend), "nvenc") && normalizeCodec(rendition.Codec) == "h264" {
+			args = append(args, "-sc_threshold", "0")
+		}
+	}
 	if rendition.QualityValue > 0 {
 		// R-D sweep: constant quality, bitrate floats.
 		args = append(args, constantQualityArgs(r.cfg.EncoderBackend, rendition.QualityValue)...)

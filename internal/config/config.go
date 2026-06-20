@@ -48,6 +48,11 @@ type TranscodeConfig struct {
 	// Defaults to FFmpegPath when VMAF_FFMPEG_PATH is unset.
 	VMAFFFmpegPath string
 	Preset         string
+	// GOPSize pins the keyframe interval (-g) and minimum keyframe interval
+	// (-keyint_min) for every rendition, on both the software and NVENC backends, so
+	// keyframes stay aligned to the 2/4/6 s segment presets and the GOP is identical
+	// across machines and codecs in a benchmark. 0 = encoder default. TRANSCODE_GOP_SIZE.
+	GOPSize          int
 	JobTimeout       time.Duration
 	MaxFileSizeBytes int64
 	// MaxRenditionHeight caps the output ladder to renditions no taller than this
@@ -105,6 +110,7 @@ func FromEnv() Config {
 			FFprobePath:        env("FFPROBE_PATH", "ffprobe"),
 			VMAFFFmpegPath:     env("VMAF_FFMPEG_PATH", env("FFMPEG_PATH", "ffmpeg")),
 			Preset:             env("FFMPEG_PRESET", "veryfast"),
+			GOPSize:            envInt("TRANSCODE_GOP_SIZE", 60),
 			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
