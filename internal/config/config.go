@@ -61,6 +61,13 @@ type TranscodeConfig struct {
 	// EncoderBackend selects the ffmpeg encoder family: "software" (libx264/libx265/
 	// libsvtav1, default) or "nvenc" (h264_nvenc/hevc_nvenc/av1_nvenc on NVIDIA GPUs).
 	EncoderBackend string
+	// ForceCappedVBR makes throughput encodes use the same capped-VBR rate control
+	// (-b:v=−maxrate, bufsize 2×) for EVERY codec — including av1, which otherwise
+	// defaults to CRF. This is what makes a throughput benchmark comparable across
+	// codecs and backends (and stops av1+NVENC from getting an ignored -crf). It does
+	// NOT affect R-D mode (constant quality). Default false (production unchanged).
+	// TRANSCODE_FORCE_CAPPED_VBR.
+	ForceCappedVBR bool
 }
 
 func FromEnv() Config {
@@ -110,6 +117,7 @@ func FromEnv() Config {
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
 			MachineLabel:       env("TRANSCODE_MACHINE_LABEL", ""),
 			EncoderBackend:     env("TRANSCODE_ENCODER_BACKEND", "software"),
+			ForceCappedVBR:     envBool("TRANSCODE_FORCE_CAPPED_VBR", false),
 		},
 	}
 }
@@ -138,6 +146,20 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "":
+		return fallback
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func envList(key string, fallback []string) []string {

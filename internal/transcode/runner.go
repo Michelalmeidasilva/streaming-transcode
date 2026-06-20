@@ -96,14 +96,13 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 	if rendition.QualityValue > 0 {
 		// R-D sweep: constant quality, bitrate floats.
 		args = append(args, constantQualityArgs(r.cfg.EncoderBackend, rendition.QualityValue)...)
-	} else if normalizeCodec(rendition.Codec) == "av1" {
+	} else if normalizeCodec(rendition.Codec) == "av1" && !r.cfg.ForceCappedVBR {
+		// av1 defaults to CRF for quality. In a throughput benchmark this is set aside
+		// (ForceCappedVBR) so av1 is rate-controlled identically to the other codecs and
+		// av1+NVENC does not receive a -crf it would silently ignore.
 		args = append(args, "-b:v", "0", "-crf", av1CRF(rendition))
 	} else {
-		args = append(args,
-			"-b:v", fmt.Sprintf("%dk", rendition.BitrateKbps),
-			"-maxrate", fmt.Sprintf("%dk", rendition.BitrateKbps),
-			"-bufsize", fmt.Sprintf("%dk", rendition.BitrateKbps*2),
-		)
+		args = append(args, cappedVBRArgs(rendition.Codec, rendition.BitrateKbps)...)
 	}
 	args = append(args, codec.args...)
 	args = append(args,
@@ -157,6 +156,23 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		metrics.CompressionRatio = float64(metrics.OutputFileSizeBytes) / float64(sourceSize)
 	}
 	return metrics, nil
+}
+
+// cappedVBRArgs builds constrained-VBR rate control targeting kbps. h264/h265/vp9/vvc
+// use maxrate == target (near-CBR, unchanged production behavior). libsvtav1 rejects
+// maxrate == target ("Max Bitrate must be greater than Target Bitrate"), so av1 gets a
+// modest 1.5× ceiling — still constraining peaks while hitting the same average bitrate,
+// which is what a throughput comparison needs across codecs/backends.
+func cappedVBRArgs(codec string, kbps int) []string {
+	maxKbps := kbps
+	if normalizeCodec(codec) == "av1" {
+		maxKbps = kbps * 3 / 2
+	}
+	return []string{
+		"-b:v", fmt.Sprintf("%dk", kbps),
+		"-maxrate", fmt.Sprintf("%dk", maxKbps),
+		"-bufsize", fmt.Sprintf("%dk", kbps*2),
+	}
 }
 
 func av1CRF(rendition domain.Rendition) string {
