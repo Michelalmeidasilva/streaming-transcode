@@ -28,6 +28,12 @@ type ResultRendition struct {
 	MaxCPUPercent       float64 `json:"maxCpuPercent"`
 	AvgMemoryMB         float64 `json:"avgMemoryMb"`
 	MaxMemoryMB         float64 `json:"maxMemoryMb"`
+	// Provenance — exact encode parameters, for reproducibility/audit.
+	Encoder     string `json:"encoder,omitempty"`
+	GOPSize     int    `json:"gopSize,omitempty"`
+	RateControl string `json:"rateControl,omitempty"`
+	Threads     int    `json:"threads,omitempty"`
+	FFmpegArgs  string `json:"ffmpegArgs,omitempty"`
 }
 
 // Result is one benchmark measurement, matching the ingest Run JSON shape.
@@ -44,8 +50,10 @@ type Result struct {
 	SourceBitrateKbps     int64             `json:"sourceBitrateKbps"`
 	SourceFileSizeBytes   int64             `json:"sourceFileSizeBytes"`
 	Clip                  string            `json:"clip"`
+	ClipSHA256            string            `json:"clipSha256,omitempty"`
 	Repetition            int               `json:"repetition"`
 	ElapsedSeconds        float64           `json:"elapsedSeconds"`
+	FFmpegVersion         string            `json:"ffmpegVersion,omitempty"`
 	Renditions            []ResultRendition `json:"renditions"`
 	CompletedAt           string            `json:"completedAt"`
 }
