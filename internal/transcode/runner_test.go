@@ -229,3 +229,60 @@ func TestBuildThumbnailArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestCappedVBRArgs(t *testing.T) {
+	// h264/h265/vp9/vvc: maxrate == target (near-CBR, unchanged production behavior).
+	h264 := strings.Join(cappedVBRArgs("h264", 3000), " ")
+	if !strings.Contains(h264, "-b:v 3000k") || !strings.Contains(h264, "-maxrate 3000k") || !strings.Contains(h264, "-bufsize 6000k") {
+		t.Fatalf("h264 capped VBR args = %q", h264)
+	}
+	// av1 (libsvtav1) rejects maxrate == target, so it gets a 1.5x ceiling.
+	av1 := strings.Join(cappedVBRArgs("av1", 3000), " ")
+	if !strings.Contains(av1, "-b:v 3000k") || !strings.Contains(av1, "-maxrate 4500k") || !strings.Contains(av1, "-bufsize 6000k") {
+		t.Fatalf("av1 capped VBR args = %q", av1)
+	}
+}
+
+func TestForceCappedVBRRoutesAV1ThroughBitrate(t *testing.T) {
+	tempDir := t.TempDir()
+	logPath := filepath.Join(tempDir, "args.log")
+	script := filepath.Join(tempDir, "ffmpeg.sh")
+	body := "#!/bin/sh\nprintf '%s\n' \"$@\" >" + logPath + "\nlast=''\nfor arg in \"$@\"; do last=\"$arg\"; done\ncase \"$last\" in\n*.mp4|*.m3u8|*.mpd) mkdir -p \"$(dirname \"$last\")\"; touch \"$last\" ;;\nesac\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("WriteFile(script) error = %v", err)
+	}
+	ffprobeScript := filepath.Join(tempDir, "ffprobe.sh")
+	ffprobeBody := "#!/bin/sh\ncat <<'EOF'\n{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"av1\",\"width\":1280,\"height\":720,\"avg_frame_rate\":\"30/1\"}],\"format\":{\"duration\":\"10\",\"bit_rate\":\"3000000\",\"size\":\"5000000\"}}\nEOF\n"
+	if err := os.WriteFile(ffprobeScript, []byte(ffprobeBody), 0o755); err != nil {
+		t.Fatalf("WriteFile(ffprobeScript) error = %v", err)
+	}
+	output := filepath.Join(tempDir, "out", "av1.mp4")
+	av1 := domain.Rendition{Name: "av1-720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"}
+
+	// Default: av1 uses CRF, no -maxrate.
+	def := NewFFmpegRunner(config.TranscodeConfig{FFmpegPath: script, FFprobePath: ffprobeScript, Preset: "fast"})
+	if _, err := def.TranscodeRendition(context.Background(), "source.mp4", nil, av1, output); err != nil {
+		t.Fatalf("default av1 error = %v", err)
+	}
+	got, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(got), "-crf") || strings.Contains(string(got), "-maxrate") {
+		t.Fatalf("default av1 should use -crf and no -maxrate; args = %s", got)
+	}
+
+	// ForceCappedVBR: av1 uses bitrate target + maxrate (> target), no -crf.
+	forced := NewFFmpegRunner(config.TranscodeConfig{FFmpegPath: script, FFprobePath: ffprobeScript, Preset: "fast", ForceCappedVBR: true})
+	if _, err := forced.TranscodeRendition(context.Background(), "source.mp4", nil, av1, output); err != nil {
+		t.Fatalf("forced av1 error = %v", err)
+	}
+	got, _ = os.ReadFile(logPath)
+	// The fake ffmpeg logs one arg per line, so assert on individual tokens.
+	gotStr := string(got)
+	if strings.Contains(gotStr, "-crf") {
+		t.Fatalf("ForceCappedVBR av1 must not use -crf; args = %s", gotStr)
+	}
+	for _, want := range []string{"-b:v", "3000k", "-maxrate", "4500k", "-bufsize", "6000k"} {
+		if !strings.Contains(gotStr, want) {
+			t.Fatalf("ForceCappedVBR av1 args missing %q; args = %s", want, gotStr)
+		}
+	}
+}
