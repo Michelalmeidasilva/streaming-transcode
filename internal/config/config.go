@@ -48,6 +48,16 @@ type TranscodeConfig struct {
 	// Defaults to FFmpegPath when VMAF_FFMPEG_PATH is unset.
 	VMAFFFmpegPath string
 	Preset         string
+	// GOPSize pins the keyframe interval (-g) and minimum keyframe interval
+	// (-keyint_min) for every rendition, on both the software and NVENC backends, so
+	// keyframes stay aligned to the 2/4/6 s segment presets and the GOP is identical
+	// across machines and codecs in a benchmark. 0 = encoder default. TRANSCODE_GOP_SIZE.
+	GOPSize          int
+	// Threads pins the encoder thread count (software backend only) so encode time is
+	// comparable per-core across machines with different vCPU counts. 0 = auto (the
+	// encoder uses all cores → full-machine throughput; report alongside cpuCores).
+	// TRANSCODE_THREADS. Applied as -threads N (+ svtav1-params lp=N for av1).
+	Threads          int
 	JobTimeout       time.Duration
 	MaxFileSizeBytes int64
 	// MaxRenditionHeight caps the output ladder to renditions no taller than this
@@ -61,6 +71,13 @@ type TranscodeConfig struct {
 	// EncoderBackend selects the ffmpeg encoder family: "software" (libx264/libx265/
 	// libsvtav1, default) or "nvenc" (h264_nvenc/hevc_nvenc/av1_nvenc on NVIDIA GPUs).
 	EncoderBackend string
+	// ForceCappedVBR makes throughput encodes use the same capped-VBR rate control
+	// (-b:v=−maxrate, bufsize 2×) for EVERY codec — including av1, which otherwise
+	// defaults to CRF. This is what makes a throughput benchmark comparable across
+	// codecs and backends (and stops av1+NVENC from getting an ignored -crf). It does
+	// NOT affect R-D mode (constant quality). Default false (production unchanged).
+	// TRANSCODE_FORCE_CAPPED_VBR.
+	ForceCappedVBR bool
 }
 
 func FromEnv() Config {
@@ -105,11 +122,14 @@ func FromEnv() Config {
 			FFprobePath:        env("FFPROBE_PATH", "ffprobe"),
 			VMAFFFmpegPath:     env("VMAF_FFMPEG_PATH", env("FFMPEG_PATH", "ffmpeg")),
 			Preset:             env("FFMPEG_PRESET", "veryfast"),
+			GOPSize:            envInt("TRANSCODE_GOP_SIZE", 60),
+			Threads:            envInt("TRANSCODE_THREADS", 0),
 			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),
 			MachineLabel:       env("TRANSCODE_MACHINE_LABEL", ""),
 			EncoderBackend:     env("TRANSCODE_ENCODER_BACKEND", "software"),
+			ForceCappedVBR:     envBool("TRANSCODE_FORCE_CAPPED_VBR", false),
 		},
 	}
 }
@@ -138,6 +158,20 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "":
+		return fallback
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func envList(key string, fallback []string) []string {

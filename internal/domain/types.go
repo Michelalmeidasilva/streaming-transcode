@@ -119,6 +119,13 @@ type RenditionMetrics struct {
 	RTF                 float64       `json:"rtf"`
 	CompressionRatio    float64       `json:"compressionRatio"`
 	ResourceUsage       ResourceUsage `json:"resourceUsage"`
+	// Provenance — the exact encode parameters used, for reproducibility/audit.
+	Encoder     string `json:"encoder,omitempty"`     // libx264 / h264_nvenc / ...
+	Preset      string `json:"preset,omitempty"`      // effective ffmpeg preset
+	GOPSize     int    `json:"gopSize,omitempty"`     // -g / -keyint_min
+	RateControl string `json:"rateControl,omitempty"` // capped-vbr | crf | cq
+	Threads     int    `json:"threads,omitempty"`     // -threads (0 = auto/all cores)
+	FFmpegArgs  string `json:"ffmpegArgs,omitempty"`  // full effective argument line
 }
 
 type Rendition struct {

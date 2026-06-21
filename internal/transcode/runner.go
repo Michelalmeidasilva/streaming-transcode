@@ -93,17 +93,47 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2", rendition.Width, rendition.Height, rendition.Width, rendition.Height),
 		"-c:v", codec.encoder,
 	)
+	// Pin the GOP identically on every backend/codec so keyframe cadence matches
+	// (segments stay aligned to the 2/4/6 s presets) and benchmark machines are
+	// compared on the same keyframe structure. 0 = encoder default (no pinning).
+	if r.cfg.GOPSize > 0 {
+		args = append(args, "-g", strconv.Itoa(r.cfg.GOPSize), "-keyint_min", strconv.Itoa(r.cfg.GOPSize))
+		// Disable scene-cut so the GOP is exactly fixed (deterministic, comparable).
+		// Only libx264 exposes -sc_threshold safely here; on NVENC and the other
+		// software encoders the -g/-keyint_min cap is the portable lever (scene-cut
+		// disable per encoder, e.g. nvenc -no-scenecut, is a hardware-verified follow-up).
+		if !strings.EqualFold(strings.TrimSpace(r.cfg.EncoderBackend), "nvenc") && normalizeCodec(rendition.Codec) == "h264" {
+			args = append(args, "-sc_threshold", "0")
+		}
+	}
+	nvenc := strings.EqualFold(strings.TrimSpace(r.cfg.EncoderBackend), "nvenc")
+	var rateControl string
 	if rendition.QualityValue > 0 {
 		// R-D sweep: constant quality, bitrate floats.
 		args = append(args, constantQualityArgs(r.cfg.EncoderBackend, rendition.QualityValue)...)
-	} else if normalizeCodec(rendition.Codec) == "av1" {
+		if nvenc {
+			rateControl = "cq"
+		} else {
+			rateControl = "crf"
+		}
+	} else if normalizeCodec(rendition.Codec) == "av1" && !r.cfg.ForceCappedVBR {
+		// av1 defaults to CRF for quality. In a throughput benchmark this is set aside
+		// (ForceCappedVBR) so av1 is rate-controlled identically to the other codecs and
+		// av1+NVENC does not receive a -crf it would silently ignore.
 		args = append(args, "-b:v", "0", "-crf", av1CRF(rendition))
+		rateControl = "crf"
 	} else {
-		args = append(args,
-			"-b:v", fmt.Sprintf("%dk", rendition.BitrateKbps),
-			"-maxrate", fmt.Sprintf("%dk", rendition.BitrateKbps),
-			"-bufsize", fmt.Sprintf("%dk", rendition.BitrateKbps*2),
-		)
+		args = append(args, cappedVBRArgs(rendition.Codec, rendition.BitrateKbps)...)
+		rateControl = "capped-vbr"
+	}
+	// Pin the encoder thread count (software only) so encode time is comparable per-core
+	// across machines with different vCPU counts. 0 = auto (uses all cores). NVENC is a
+	// hardware path, so -threads does not apply.
+	if r.cfg.Threads > 0 && !nvenc {
+		args = append(args, "-threads", strconv.Itoa(r.cfg.Threads))
+		if normalizeCodec(rendition.Codec) == "av1" {
+			args = append(args, "-svtav1-params", fmt.Sprintf("lp=%d", r.cfg.Threads))
+		}
 	}
 	args = append(args, codec.args...)
 	args = append(args,
@@ -126,6 +156,12 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		TargetBitrateKbps:   rendition.BitrateKbps,
 		ElapsedSeconds:      completedAt.Sub(startedAt).Seconds(),
 		ResourceUsage:       resourceUsage,
+		Encoder:             codec.encoder,
+		Preset:              preset,
+		GOPSize:             r.cfg.GOPSize,
+		RateControl:         rateControl,
+		Threads:             r.cfg.Threads,
+		FFmpegArgs:          strings.Join(args, " "),
 	}
 	if sourceSize > 0 {
 		metrics.CompressionRatio = float64(metrics.OutputFileSizeBytes) / float64(sourceSize)
@@ -157,6 +193,23 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		metrics.CompressionRatio = float64(metrics.OutputFileSizeBytes) / float64(sourceSize)
 	}
 	return metrics, nil
+}
+
+// cappedVBRArgs builds constrained-VBR rate control targeting kbps. h264/h265/vp9/vvc
+// use maxrate == target (near-CBR, unchanged production behavior). libsvtav1 rejects
+// maxrate == target ("Max Bitrate must be greater than Target Bitrate"), so av1 gets a
+// modest 1.5× ceiling — still constraining peaks while hitting the same average bitrate,
+// which is what a throughput comparison needs across codecs/backends.
+func cappedVBRArgs(codec string, kbps int) []string {
+	maxKbps := kbps
+	if normalizeCodec(codec) == "av1" {
+		maxKbps = kbps * 3 / 2
+	}
+	return []string{
+		"-b:v", fmt.Sprintf("%dk", kbps),
+		"-maxrate", fmt.Sprintf("%dk", maxKbps),
+		"-bufsize", fmt.Sprintf("%dk", kbps*2),
+	}
 }
 
 func av1CRF(rendition domain.Rendition) string {
