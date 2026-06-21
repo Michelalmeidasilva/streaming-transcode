@@ -106,16 +106,34 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 			args = append(args, "-sc_threshold", "0")
 		}
 	}
+	nvenc := strings.EqualFold(strings.TrimSpace(r.cfg.EncoderBackend), "nvenc")
+	var rateControl string
 	if rendition.QualityValue > 0 {
 		// R-D sweep: constant quality, bitrate floats.
 		args = append(args, constantQualityArgs(r.cfg.EncoderBackend, rendition.QualityValue)...)
+		if nvenc {
+			rateControl = "cq"
+		} else {
+			rateControl = "crf"
+		}
 	} else if normalizeCodec(rendition.Codec) == "av1" && !r.cfg.ForceCappedVBR {
 		// av1 defaults to CRF for quality. In a throughput benchmark this is set aside
 		// (ForceCappedVBR) so av1 is rate-controlled identically to the other codecs and
 		// av1+NVENC does not receive a -crf it would silently ignore.
 		args = append(args, "-b:v", "0", "-crf", av1CRF(rendition))
+		rateControl = "crf"
 	} else {
 		args = append(args, cappedVBRArgs(rendition.Codec, rendition.BitrateKbps)...)
+		rateControl = "capped-vbr"
+	}
+	// Pin the encoder thread count (software only) so encode time is comparable per-core
+	// across machines with different vCPU counts. 0 = auto (uses all cores). NVENC is a
+	// hardware path, so -threads does not apply.
+	if r.cfg.Threads > 0 && !nvenc {
+		args = append(args, "-threads", strconv.Itoa(r.cfg.Threads))
+		if normalizeCodec(rendition.Codec) == "av1" {
+			args = append(args, "-svtav1-params", fmt.Sprintf("lp=%d", r.cfg.Threads))
+		}
 	}
 	args = append(args, codec.args...)
 	args = append(args,
@@ -138,6 +156,12 @@ func (r *Runner) TranscodeRendition(ctx context.Context, source string, raw *dom
 		TargetBitrateKbps:   rendition.BitrateKbps,
 		ElapsedSeconds:      completedAt.Sub(startedAt).Seconds(),
 		ResourceUsage:       resourceUsage,
+		Encoder:             codec.encoder,
+		Preset:              preset,
+		GOPSize:             r.cfg.GOPSize,
+		RateControl:         rateControl,
+		Threads:             r.cfg.Threads,
+		FFmpegArgs:          strings.Join(args, " "),
 	}
 	if sourceSize > 0 {
 		metrics.CompressionRatio = float64(metrics.OutputFileSizeBytes) / float64(sourceSize)

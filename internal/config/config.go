@@ -53,6 +53,11 @@ type TranscodeConfig struct {
 	// keyframes stay aligned to the 2/4/6 s segment presets and the GOP is identical
 	// across machines and codecs in a benchmark. 0 = encoder default. TRANSCODE_GOP_SIZE.
 	GOPSize          int
+	// Threads pins the encoder thread count (software backend only) so encode time is
+	// comparable per-core across machines with different vCPU counts. 0 = auto (the
+	// encoder uses all cores → full-machine throughput; report alongside cpuCores).
+	// TRANSCODE_THREADS. Applied as -threads N (+ svtav1-params lp=N for av1).
+	Threads          int
 	JobTimeout       time.Duration
 	MaxFileSizeBytes int64
 	// MaxRenditionHeight caps the output ladder to renditions no taller than this
@@ -118,6 +123,7 @@ func FromEnv() Config {
 			VMAFFFmpegPath:     env("VMAF_FFMPEG_PATH", env("FFMPEG_PATH", "ffmpeg")),
 			Preset:             env("FFMPEG_PRESET", "veryfast"),
 			GOPSize:            envInt("TRANSCODE_GOP_SIZE", 60),
+			Threads:            envInt("TRANSCODE_THREADS", 0),
 			JobTimeout:         time.Duration(envInt("TRANSCODE_JOB_TIMEOUT_SECONDS", 3600)) * time.Second,
 			MaxFileSizeBytes:   int64(envInt("TRANSCODE_MAX_FILE_SIZE_MB", 0)) * 1024 * 1024,
 			MaxRenditionHeight: envInt("TRANSCODE_MAX_HEIGHT", 0),

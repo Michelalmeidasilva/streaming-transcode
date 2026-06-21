@@ -41,6 +41,12 @@ func (f *fakeRunner) TranscodeRendition(_ context.Context, _ string, _ *domain.R
 		OutputBitrateKbps:   int64(r.BitrateKbps - 50),
 		OutputFileSizeBytes: 2_000_000,
 		ResourceUsage:       domain.ResourceUsage{AvgCPUPercent: 150, MaxCPUPercent: 300},
+		Encoder:             "libx264",
+		Preset:              "fast",
+		GOPSize:             60,
+		RateControl:         "capped-vbr",
+		Threads:             4,
+		FFmpegArgs:          "-y -i in -g 60 -threads 4 out.mp4",
 	}, nil
 }
 
@@ -132,6 +138,31 @@ func TestRunRecordsOutputFileSize(t *testing.T) {
 	}
 	if len(sink.posted) != 1 || sink.posted[0].Renditions[0].OutputFileSizeBytes != 2_000_000 {
 		t.Fatalf("output file size not recorded: %#v", sink.posted)
+	}
+}
+
+func TestRunRecordsProvenance(t *testing.T) {
+	storage := &fakeStorage{}
+	runner := &fakeRunner{}
+	sink := &fakeSink{}
+	cfg := Config{
+		CorpusBucket: "b", Clips: []string{"a.mp4"},
+		Codecs: []string{"h264"}, Resolutions: []Resolution{{1280, 720, 3000}},
+		Repeats: 1, MachineLabel: "c5.xlarge",
+	}
+	deps := Deps{Storage: storage, Runner: runner, Sink: sink, WorkDir: t.TempDir(), FFmpegVersion: "ffmpeg version 5.1.9"}
+	if err := Run(context.Background(), cfg, deps); err != nil {
+		t.Fatal(err)
+	}
+	r := sink.posted[0]
+	// fakeStorage.Download writes "x"; sha256("x") is a known constant.
+	const sha256OfX = "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+	if r.FFmpegVersion != "ffmpeg version 5.1.9" || r.ClipSHA256 != sha256OfX {
+		t.Fatalf("result provenance = ffmpeg=%q sha=%q", r.FFmpegVersion, r.ClipSHA256)
+	}
+	rd := r.Renditions[0]
+	if rd.Encoder != "libx264" || rd.Preset != "fast" || rd.GOPSize != 60 || rd.RateControl != "capped-vbr" || rd.Threads != 4 || rd.FFmpegArgs == "" {
+		t.Fatalf("rendition provenance = %+v", rd)
 	}
 }
 

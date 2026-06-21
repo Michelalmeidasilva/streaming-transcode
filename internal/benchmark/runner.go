@@ -2,7 +2,10 @@ package benchmark
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,6 +34,9 @@ type Deps struct {
 	Sink    ResultSink
 	WorkDir string
 	Logf    func(format string, args ...any)
+	// FFmpegVersion is recorded on every result as provenance (the CPU and GPU
+	// images ship different ffmpeg builds). Resolved once by the caller.
+	FFmpegVersion string
 }
 
 // Run executes the benchmark matrix serially: for each job, download the clip
@@ -61,6 +67,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 
 	hostname, _ := os.Hostname()
 	downloaded := map[string]string{}
+	clipHashes := map[string]string{}
 	probed := map[string]domain.MediaInfo{}
 	var failures int
 
@@ -74,6 +81,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 				continue
 			}
 			downloaded[job.Clip] = localClip
+			clipHashes[job.Clip] = fileSHA256(localClip)
 			info, perr := deps.Runner.Probe(localClip)
 			if perr != nil {
 				logf("probe %s failed (continuing without source info): %v", job.Clip, perr)
@@ -123,8 +131,10 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 			SourceBitrateKbps:     probed[job.Clip].BitrateKbps,
 			SourceFileSizeBytes:   probed[job.Clip].SizeBytes,
 			Clip:                  job.Clip,
+			ClipSHA256:            clipHashes[job.Clip],
 			Repetition:            job.Repetition,
 			ElapsedSeconds:        metrics.ElapsedSeconds,
+			FFmpegVersion:         deps.FFmpegVersion,
 			CompletedAt:           time.Now().UTC().Format(time.RFC3339),
 			Renditions: []ResultRendition{{
 				Name:                rendition.Name,
@@ -142,6 +152,12 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 				MaxCPUPercent:       metrics.ResourceUsage.MaxCPUPercent,
 				AvgMemoryMB:         metrics.ResourceUsage.AvgMemoryMB,
 				MaxMemoryMB:         metrics.ResourceUsage.MaxMemoryMB,
+				Preset:              metrics.Preset,
+				Encoder:             metrics.Encoder,
+				GOPSize:             metrics.GOPSize,
+				RateControl:         metrics.RateControl,
+				Threads:             metrics.Threads,
+				FFmpegArgs:          metrics.FFmpegArgs,
 			}},
 		}
 		if err := postWithRetry(ctx, deps.Sink, res, logf); err != nil {
@@ -154,6 +170,21 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 		return fmt.Errorf("benchmark completed with %d failed job(s)", failures)
 	}
 	return nil
+}
+
+// fileSHA256 returns the hex-encoded SHA-256 of a file, recorded as provenance so
+// a benchmark result is tied to the exact corpus bytes it encoded. "" on error.
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func postWithRetry(ctx context.Context, sink ResultSink, res Result, logf func(string, ...any)) error {

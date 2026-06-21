@@ -286,3 +286,70 @@ func TestForceCappedVBRRoutesAV1ThroughBitrate(t *testing.T) {
 		}
 	}
 }
+
+// fakeEncodeRunner builds a Runner backed by stub ffmpeg/ffprobe so TranscodeRendition
+// runs without real encoders; returns the runner and the args-log path.
+func fakeEncodeRunner(t *testing.T, cfg config.TranscodeConfig) (*Runner, string) {
+	t.Helper()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "args.log")
+	script := filepath.Join(dir, "ffmpeg.sh")
+	body := "#!/bin/sh\nprintf '%s\n' \"$@\" >" + logPath + "\nlast=''\nfor arg in \"$@\"; do last=\"$arg\"; done\ncase \"$last\" in\n*.mp4|*.m3u8|*.mpd) mkdir -p \"$(dirname \"$last\")\"; touch \"$last\" ;;\nesac\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write ffmpeg stub: %v", err)
+	}
+	probe := filepath.Join(dir, "ffprobe.sh")
+	probeBody := "#!/bin/sh\ncat <<'EOF'\n{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":1280,\"height\":720,\"avg_frame_rate\":\"30/1\"}],\"format\":{\"duration\":\"10\",\"bit_rate\":\"3000000\",\"size\":\"5000000\"}}\nEOF\n"
+	if err := os.WriteFile(probe, []byte(probeBody), 0o755); err != nil {
+		t.Fatalf("write ffprobe stub: %v", err)
+	}
+	cfg.FFmpegPath, cfg.FFprobePath = script, probe
+	return NewFFmpegRunner(cfg), logPath
+}
+
+func TestProvenanceRecordedInMetrics(t *testing.T) {
+	runner, _ := fakeEncodeRunner(t, config.TranscodeConfig{Preset: "fast", GOPSize: 60, Threads: 4, ForceCappedVBR: true})
+	out := filepath.Join(t.TempDir(), "h264.mp4")
+	m, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil,
+		domain.Rendition{Name: "720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h264"}, out)
+	if err != nil {
+		t.Fatalf("TranscodeRendition error = %v", err)
+	}
+	if m.Encoder != "libx264" || m.Preset != "fast" || m.GOPSize != 60 || m.Threads != 4 || m.RateControl != "capped-vbr" {
+		t.Fatalf("provenance = %+v", m)
+	}
+	for _, want := range []string{"-threads 4", "-g 60", "-keyint_min 60", "libx264"} {
+		if !strings.Contains(m.FFmpegArgs, want) {
+			t.Fatalf("FFmpegArgs missing %q: %s", want, m.FFmpegArgs)
+		}
+	}
+}
+
+func TestThreadsAndRateControlByPath(t *testing.T) {
+	// av1 software + threads: -threads and svtav1 lp set; capped-vbr when forced.
+	runner, _ := fakeEncodeRunner(t, config.TranscodeConfig{Preset: "fast", Threads: 8, ForceCappedVBR: true})
+	m, err := runner.TranscodeRendition(context.Background(), "source.mp4", nil,
+		domain.Rendition{Name: "av1", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"}, filepath.Join(t.TempDir(), "a.mp4"))
+	if err != nil {
+		t.Fatalf("av1 error = %v", err)
+	}
+	if m.RateControl != "capped-vbr" || !strings.Contains(m.FFmpegArgs, "-svtav1-params lp=8") || !strings.Contains(m.FFmpegArgs, "-threads 8") {
+		t.Fatalf("av1 provenance = %+v", m)
+	}
+
+	// av1 without ForceCappedVBR → crf.
+	runner2, _ := fakeEncodeRunner(t, config.TranscodeConfig{Preset: "fast"})
+	m2, _ := runner2.TranscodeRendition(context.Background(), "source.mp4", nil,
+		domain.Rendition{Name: "av1", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "av1"}, filepath.Join(t.TempDir(), "a2.mp4"))
+	if m2.RateControl != "crf" {
+		t.Fatalf("av1 default RateControl = %q, want crf", m2.RateControl)
+	}
+
+	// nvenc backend ignores -threads (hardware path).
+	runner3, _ := fakeEncodeRunner(t, config.TranscodeConfig{Preset: "fast", Threads: 4, EncoderBackend: "nvenc", ForceCappedVBR: true})
+	m3, _ := runner3.TranscodeRendition(context.Background(), "source.mp4", nil,
+		domain.Rendition{Name: "720p", Width: 1280, Height: 720, BitrateKbps: 3000, Codec: "h264"}, filepath.Join(t.TempDir(), "n.mp4"))
+	if strings.Contains(m3.FFmpegArgs, "-threads") {
+		t.Fatalf("nvenc must not set -threads: %s", m3.FFmpegArgs)
+	}
+}

@@ -38,11 +38,12 @@ func main() {
 	}
 
 	deps := benchmark.Deps{
-		Storage: store,
-		Runner:  transcode.NewFFmpegRunner(appCfg.Transcode),
-		Sink:    benchmark.NewHTTPSink(cfg.IngestURL, nil),
-		WorkDir: filepath.Join(appCfg.Transcode.WorkDir, "benchmark"),
-		Logf:    logger.Printf,
+		Storage:       store,
+		Runner:        transcode.NewFFmpegRunner(appCfg.Transcode),
+		Sink:          benchmark.NewHTTPSink(cfg.IngestURL, nil),
+		WorkDir:       filepath.Join(appCfg.Transcode.WorkDir, "benchmark"),
+		Logf:          logger.Printf,
+		FFmpegVersion: transcode.FFmpegVersion(appCfg.Transcode.FFmpegPath),
 	}
 
 	logger.Printf("benchmark start machine=%s bucket=%s prefix=%s codecs=%v repeats=%d",
