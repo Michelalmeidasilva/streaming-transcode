@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /out/benchmark ./cmd/benchmark
 
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS ffbuild
+FROM nvidia/cuda:13.3.0-devel-ubuntu22.04 AS ffbuild
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git build-essential yasm nasm pkg-config ca-certificates \
       libx264-dev libx265-dev libnuma-dev && rm -rf /var/lib/apt/lists/*
@@ -23,7 +23,7 @@ RUN git clone --depth 1 -b n7.0 https://github.com/FFmpeg/FFmpeg.git /ff \
        --enable-gpl --enable-libx264 --enable-libx265 --prefix=/usr/local \
   && make -j"$(nproc)" && make install
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.3.0-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libx264-163 libx265-199 libnuma1 && rm -rf /var/lib/apt/lists/*
 COPY --from=ffbuild /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffbuild /usr/local/bin/ffprobe /usr/local/bin/ffprobe

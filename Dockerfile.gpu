@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 go build -o /out/benchmark ./cmd/benchmark
 # Pinning nv-codec-headers sdk/12.2 yields all three encoders (h264/hevc/av1_nvenc)
 # at NVENC API 12.2, which the Deep Learning AMI driver (~570, API 13.0) supports
 # (NVENC drivers are backward-compatible: driver API >= the API ffmpeg was built for).
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS ffbuild
+FROM nvidia/cuda:13.3.0-devel-ubuntu22.04 AS ffbuild
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git build-essential yasm nasm pkg-config ca-certificates \
       libx264-dev libx265-dev libnuma-dev && rm -rf /var/lib/apt/lists/*
@@ -31,7 +31,7 @@ RUN git clone --depth 1 -b n7.1 https://github.com/FFmpeg/FFmpeg.git /ff \
 
 # Runtime: CUDA userspace; ffmpeg dlopens libnvidia-encode at run time, provided
 # by the host driver via `docker run --gpus all`.
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.3.0-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils libx264-163 libx265-199 libnuma1 && rm -rf /var/lib/apt/lists/*
 COPY --from=ffbuild /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffbuild /usr/local/bin/ffprobe /usr/local/bin/ffprobe
