@@ -25,6 +25,7 @@ dataset/**/*.y4m
 *.ts
 
 # Local binaries and reports from ad-hoc runs
+/worker
 transcode-local
 # ...but keep the command's source package (the bare pattern above also matched
 # the cmd/transcode-local/ dir, leaving the Batch entrypoint untracked).
@@ -33,6 +34,13 @@ coverage.out
 
 # macOS noise
 .DS_Store
+
+# Python bytecode caches (helper scripts)
+__pycache__/
+*.pyc
+
+# Stray editor "copy" duplicates
+*copy.csv
 
 # air (hot reload em make development-infra)
 tmp/
