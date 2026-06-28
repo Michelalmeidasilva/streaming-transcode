@@ -63,6 +63,7 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 		}
 		cfg.QualityPoints = qp
 	}
+	cfg.SessionID = getenv("BENCHMARK_SESSION_ID")
 	return cfg, nil
 }
 
