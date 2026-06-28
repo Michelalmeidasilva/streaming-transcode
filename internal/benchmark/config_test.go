@@ -48,10 +48,10 @@ func TestConfigFromEnvRejectsInvalidMode(t *testing.T) {
 
 func TestConfigReadsSessionID(t *testing.T) {
 	env := map[string]string{
-		"BENCHMARK_CODECS":        "h264",
-		"BENCHMARK_RESOLUTIONS":   "1920x1080:6000",
-		"INGEST_BENCHMARK_URL":    "https://host/api/v1",
-		"BENCHMARK_SESSION_ID":    "123e4567-e89b-42d3-a456-426614174000",
+		"BENCHMARK_CODECS":      "h264",
+		"BENCHMARK_RESOLUTIONS": "1920x1080:6000",
+		"INGEST_BENCHMARK_URL":  "https://host/api/v1",
+		"BENCHMARK_SESSION_ID":  "123e4567-e89b-42d3-a456-426614174000",
 	}
 	cfg, err := ConfigFromEnv(func(k string) string { return env[k] })
 	if err != nil {
