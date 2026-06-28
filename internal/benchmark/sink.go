@@ -39,6 +39,7 @@ type ResultRendition struct {
 // Result is one benchmark measurement, matching the ingest Run JSON shape.
 type Result struct {
 	Benchmark             bool              `json:"benchmark"`
+	SessionID             string            `json:"sessionId,omitempty"`
 	MachineLabel          string            `json:"machineLabel"`
 	Hostname              string            `json:"hostname"`
 	CPUCores              int               `json:"cpuCores"`

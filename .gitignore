@@ -44,3 +44,4 @@ __pycache__/
 
 # air (hot reload em make development-infra)
 tmp/
+.superpowers/

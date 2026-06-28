@@ -25,6 +25,7 @@ type Config struct {
 	IngestURL     string           // base, e.g. https://host/api/v1
 	Mode          string           // "throughput" (default) or "rd"
 	QualityPoints map[string][]int // codec -> CRF/CQ values, used in rd mode
+	SessionID     string           // correlation ID from BENCHMARK_SESSION_ID; empty if unset
 }
 
 // Job is one measurement unit: a clip encoded with a codec at a resolution, once.

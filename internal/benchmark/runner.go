@@ -120,6 +120,7 @@ func Run(ctx context.Context, cfg Config, deps Deps) error {
 
 		res := Result{
 			Benchmark:             true,
+			SessionID:             cfg.SessionID,
 			MachineLabel:          cfg.MachineLabel,
 			Hostname:              hostname,
 			CPUCores:              runtime.NumCPU(),

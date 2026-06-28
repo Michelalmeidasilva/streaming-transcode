@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,21 @@ func TestHTTPSinkPostsResult(t *testing.T) {
 	}
 	if gotBody.MachineLabel != "c5.xlarge" || len(gotBody.Renditions) != 1 || gotBody.Renditions[0].Codec != "av1" {
 		t.Fatalf("body not posted correctly: %#v", gotBody)
+	}
+}
+
+func TestResultMarshalsSessionID(t *testing.T) {
+	r := Result{SessionID: "123e4567-e89b-42d3-a456-426614174000", MachineLabel: "c5.xlarge"}
+	b, _ := json.Marshal(r)
+	if !strings.Contains(string(b), `"sessionId":"123e4567-e89b-42d3-a456-426614174000"`) {
+		t.Fatalf("JSON sem sessionId: %s", b)
+	}
+}
+
+func TestResultOmitsEmptySessionID(t *testing.T) {
+	r := Result{MachineLabel: "c5.xlarge"}
+	b, _ := json.Marshal(r)
+	if strings.Contains(string(b), "sessionId") {
+		t.Fatalf("sessionId vazio não deveria aparecer: %s", b)
 	}
 }
