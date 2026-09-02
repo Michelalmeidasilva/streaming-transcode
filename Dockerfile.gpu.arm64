@@ -3,7 +3,7 @@
 # ffmpeg from source with --enable-nvenc on the arm64 CUDA (sbsa) base. T4G
 # (Turing) supports h264_nvenc/hevc_nvenc but NOT av1_nvenc.
 
-FROM golang:1.26-bookworm AS build
+FROM golang:1.27-bookworm AS build
 WORKDIR /app
 COPY go.mod go.sum* ./
 RUN go mod download
