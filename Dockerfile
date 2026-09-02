@@ -1,4 +1,4 @@
-FROM golang:1.26-bookworm AS build
+FROM golang:1.27-bookworm AS build
 
 WORKDIR /app
 COPY go.mod go.sum* ./
@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go build -o /out/streaming-transcode ./cmd/worker
 RUN CGO_ENABLED=0 go build -o /out/transcode-local ./cmd/transcode-local
 RUN CGO_ENABLED=0 go build -o /out/benchmark ./cmd/benchmark
 
-FROM golang:1.26-bookworm
+FROM golang:1.27-bookworm
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl xz-utils \
